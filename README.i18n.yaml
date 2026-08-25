@@ -1,0 +1,4 @@
+# Bilingual-pair consistency record. After editing either README, update the
+# hashes with git hash-object and keep both language files synchronized.
+README.md: 57de5c7a088ca35e523f70eb52543b9251fabb50
+README.zh.md: 8f6604e90d704d9cd447a7eff57543d8d8c23f78
