@@ -10,7 +10,7 @@
 | --- | --- |
 | 包名 | `@ly028716/dsh-kb-daily` |
 | GitHub 仓库 | `ly028716/dsh-kb-daily` |
-| DSH release train | `0.1.0-rc.7` |
+| 当前社区 DSH release train | `0.1.0-rc.7` |
 | Node.js | `22.x` |
 | pnpm | `11.7.0` |
 | 验证命令 | ``.\node_modules\.bin\vitest.cmd run tests/package.spec.ts && pnpm run typecheck && pnpm run build && pnpm pack --dry-run`` |
