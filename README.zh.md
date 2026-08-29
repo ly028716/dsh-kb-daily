@@ -10,10 +10,10 @@
 | --- | --- |
 | 包名 | `@ly028716/dsh-kb-daily` |
 | GitHub 仓库 | `ly028716/dsh-kb-daily` |
-| 当前社区 DSH release train | `0.1.0-rc.7` |
-| Node.js | `22.x` |
+| 已验证的 DSH CLI / bundle loader | `0.1.0-rc.8` |
+| Node.js | `25.2.1` |
 | pnpm | `11.7.0` |
-| 验证命令 | ``.\node_modules\.bin\vitest.cmd run tests/package.spec.ts && pnpm run typecheck && pnpm run build && pnpm pack --dry-run`` |
+| 验证命令 | `pnpm run verify` |
 
 ## 安装
 
@@ -78,7 +78,9 @@ pnpm install
 pnpm run typecheck
 pnpm run test
 pnpm run build
-pnpm pack --dry-run
+pnpm run pack:inspect
+pnpm run smoke:dsh
+pnpm run verify
 ```
 
 本包只使用已发布的 DeepSeek Harness 与 Cordis 公共 API。peer dependency 会镜像到开发依赖以支持本地类型检查和测试，不需要任何 `workspace:` 依赖。

@@ -10,10 +10,10 @@ Standalone DeepSeek Harness/Cordis community bundle that scans a Markdown knowle
 | --- | --- |
 | Package | `@ly028716/dsh-kb-daily` |
 | GitHub | `ly028716/dsh-kb-daily` |
-| Current community DSH release train | `0.1.0-rc.7` |
-| Node.js | `22.x` |
+| Verified DSH CLI / bundle loader | `0.1.0-rc.8` |
+| Node.js | `25.2.1` |
 | pnpm | `11.7.0` |
-| Verification command | ``.\node_modules\.bin\vitest.cmd run tests/package.spec.ts && pnpm run typecheck && pnpm run build && pnpm pack --dry-run`` |
+| Verification command | `pnpm run verify` |
 
 ## Installation
 
@@ -78,7 +78,9 @@ pnpm install
 pnpm run typecheck
 pnpm run test
 pnpm run build
-pnpm pack --dry-run
+pnpm run pack:inspect
+pnpm run smoke:dsh
+pnpm run verify
 ```
 
 The package uses published DeepSeek Harness and Cordis APIs only. Its peer dependencies are mirrored as development dependencies for local typechecking and tests; no `workspace:` dependency is required.
