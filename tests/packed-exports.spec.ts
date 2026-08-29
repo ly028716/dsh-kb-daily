@@ -137,6 +137,9 @@ describe('packed artifact contract', () => {
         './package.json': './package.json',
       })
       expect(existsSync(join(packed.packageDir, 'src'))).toBe(false)
+      const invariantSource = readFileSync(join(packed.packageDir, 'lib/invariant.js'), 'utf8')
+      expect(invariantSource).toContain('@ly028716/dsh-kb-daily')
+      expect(invariantSource).not.toContain('@deepseek-ai/dsh-kb-daily')
 
       assertPackedResolution(packed.packageDir)
     } finally {

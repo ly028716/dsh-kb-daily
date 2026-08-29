@@ -48,6 +48,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "config:parse": "node scripts/parse-config.mjs",
     "pack:inspect": "vitest run tests/packed-exports.spec.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
@@ -80,7 +81,8 @@
     "@deepseek-ai/schemastery": "^3.18.1",
     "@types/node": "^22.20.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "yaml": "^2.9.0"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1"

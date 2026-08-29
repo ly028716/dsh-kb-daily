@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-kb-daily`.
- * @module @deepseek-ai/dsh-kb-daily/invariant
+ * Package-owned invariant companion for `@ly028716/dsh-kb-daily`.
+ * @module @ly028716/dsh-kb-daily/invariant
  */
 
 /* jscpd:ignore-start */
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-kb-daily'
+const PACKAGE_NAME = '@ly028716/dsh-kb-daily'
 
 /** Cordis companion plugin name. */
 export const name = 'kb-daily-invariant'
