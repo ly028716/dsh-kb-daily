@@ -1,8 +1,8 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { assertContained, resolveReportPath } from '../src/paths.ts'
+import { assertContained, assertNoSymlinkSegments, resolveReportPath } from '../src/paths.ts'
 
 describe('kb-daily path containment', () => {
   it('resolves the report path under the vault', async () => {
@@ -39,6 +39,36 @@ describe('kb-daily path containment', () => {
       expect(() => assertContained(root, '../outside')).toThrow(/escapes the vault/)
     } finally {
       await rm(root, { recursive: true, force: true })
+    }
+  })
+  it('rejects directory symlink segments while allowing a missing final path under a real directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    try {
+      await mkdir(join(root, 'notes'), { recursive: true })
+      await symlink(outside, join(root, 'linked-notes'), 'dir')
+
+      await expect(assertNoSymlinkSegments(root, join(root, 'notes', 'future.md'))).resolves.toBeUndefined()
+      await expect(assertNoSymlinkSegments(root, join(root, 'linked-notes', 'future.md'))).rejects.toThrow(/symbolic link/i)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return
+      throw error
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+  it('rejects Windows junction segments', async () => {
+    if (process.platform !== 'win32') return
+
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    try {
+      await symlink(outside, join(root, 'Daily'), 'junction')
+      await expect(assertNoSymlinkSegments(root, join(root, 'Daily', '2026-08-17.md'))).rejects.toThrow(/symbolic link/i)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
     }
   })
 })

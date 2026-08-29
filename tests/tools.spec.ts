@@ -31,7 +31,12 @@ describe('kb-daily model tools', () => {
       await mkdir(join(root, 'notes'))
       await writeFile(join(root, 'notes', 'today.md'), '# today')
       const { ctx, registered } = toolContext()
-      const config: ToolsConfig = { vaultPath: root, reportDir: 'Daily', timeZone: 'UTC' }
+      const config: ToolsConfig = {
+        vaultPath: root,
+        reportDir: 'Daily',
+        timeZone: 'UTC',
+        now: () => new Date('2026-08-24T01:30:00Z'),
+      }
       const dispose = registerTools(ctx, config)
 
       const listed = await registered.get('kb_list_modified')!.execute({ since: '2000-01-01' }, exec)
@@ -51,14 +56,34 @@ describe('kb-daily model tools', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
-  it('uses the configured timezone when deriving the report date', async () => {
+  it('uses the injected UTC clock when deriving the report date at a day boundary', async () => {
     const root = await mkdtemp(join(tmpdir(), 'kb-daily-tools-'))
     try {
       const { ctx, registered } = toolContext()
-      registerTools(ctx, { vaultPath: root, reportDir: 'Daily', timeZone: 'Pacific/Honolulu' })
+      registerTools(ctx, {
+        vaultPath: root,
+        reportDir: 'Daily',
+        timeZone: 'UTC',
+        now: () => new Date('2026-08-24T23:59:59Z'),
+      })
       const value = await registered.get('kb_write_report')!.execute({ content: '# report' }, exec)
-      expect(value).toMatchObject({ created: true })
-      expect((value as { date: string }).date).toMatch(/^2026-08-2[34]$/)
+      expect(value).toMatchObject({ date: '2026-08-24', created: true })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+  it('uses the configured timezone with an injected clock across the Asia/Shanghai date boundary', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-tools-'))
+    try {
+      const { ctx, registered } = toolContext()
+      registerTools(ctx, {
+        vaultPath: root,
+        reportDir: 'Daily',
+        timeZone: 'Asia/Shanghai',
+        now: () => new Date('2026-08-24T16:30:00Z'),
+      })
+      const value = await registered.get('kb_write_report')!.execute({ content: '# report' }, exec)
+      expect(value).toMatchObject({ date: '2026-08-25', created: true })
     } finally {
       await rm(root, { recursive: true, force: true })
     }

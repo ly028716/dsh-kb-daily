@@ -11,6 +11,7 @@ export interface ToolsConfig {
   vaultPath: string
   reportDir: string
   timeZone: string
+  now?: () => Date
 }
 
 const ERROR_SCHEMA = {
@@ -75,6 +76,7 @@ function failure(code: string, error: unknown): { code: string; message: string 
 
 /** Register the three knowledge-base tools and return one idempotent disposer. */
 export function registerTools(ctx: Context, config: ToolsConfig): () => void {
+  const now = config.now ?? (() => new Date())
   const disposers: Array<() => void> = []
   try {
     disposers.push(ctx.tools.register(defineTool({
@@ -85,7 +87,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
       },
       output: { schema: { oneOf: [LIST_SCHEMA, ERROR_SCHEMA] }, render: renderValue },
       async execute(args) {
-        const since = args.since ?? dateKey(new Date(), config.timeZone)
+        const since = args.since ?? dateKey(now(), config.timeZone)
         try {
           return { files: await listModifiedFiles(config.vaultPath, dateStartMs(since, config.timeZone)) }
         } catch (error) {
@@ -118,7 +120,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
       },
       output: { schema: { oneOf: [WRITE_SCHEMA, REPORT_EXISTS_SCHEMA, ERROR_SCHEMA] }, render: renderValue },
       async execute(args) {
-        const date = dateKey(new Date(), config.timeZone)
+        const date = dateKey(now(), config.timeZone)
         const fileName = reportFileName(date)
         try {
           const absolutePath = await writeReport(config.vaultPath, config.reportDir, fileName, args.content)

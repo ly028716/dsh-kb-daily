@@ -1,3 +1,4 @@
+import { lstat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /**
@@ -28,4 +29,45 @@ export function assertContained(vaultPath: string, relPath: string): string {
     throw new Error(`path escapes the vault: ${relPath}`)
   }
   return candidate
+}
+
+/**
+ * Reject physical paths that pass through a symbolic-link or junction segment.
+ * Missing tail segments are allowed so callers can validate a future path before
+ * creating it.
+ * @param vaultPath - absolute path to the vault root.
+ * @param absolutePath - absolute path already resolved under the vault.
+ * @throws when any existing path segment is a symbolic link.
+ */
+export async function assertNoSymlinkSegments(vaultPath: string, absolutePath: string): Promise<void> {
+  const root = resolve(vaultPath)
+  const candidate = resolve(absolutePath)
+  const rel = relative(root, candidate)
+  if (rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) {
+    throw new Error(`path escapes the vault: ${absolutePath}`)
+  }
+
+  const check = async (path: string): Promise<boolean> => {
+    try {
+      const info = await lstat(path)
+      if (info.isSymbolicLink()) {
+        throw new Error(`path contains a symbolic link: ${path}`)
+      }
+      return true
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === 'ENOENT' || code === 'ENOTDIR') return false
+      throw error
+    }
+  }
+
+  if (!await check(root)) return
+  if (rel === '') return
+
+  let current = root
+  for (const segment of rel.split(/[\\/]+/)) {
+    if (!segment) continue
+    current = join(current, segment)
+    if (!await check(current)) return
+  }
 }

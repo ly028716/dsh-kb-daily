@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { assertContained, resolveReportPath } from './paths.ts'
+import { assertContained, assertNoSymlinkSegments, resolveReportPath } from './paths.ts'
 
 /** One .md file found by a vault scan. */
 export interface ModifiedFile {
@@ -12,6 +12,9 @@ export interface ModifiedFile {
 
 /** Directories never scanned for notes. */
 const SKIP_DIRECTORIES = new Set(['.git', '.obsidian', '.trash', 'node_modules'])
+
+/** Hard cap for one generated report in UTF-8 bytes. */
+export const MAX_REPORT_BYTES = 512 * 1024
 
 /**
  * Vault-relative path with forward slashes for one absolute path inside the vault.
@@ -99,6 +102,7 @@ export async function readVaultFile(
   maxBytes = 64 * 1024,
 ): Promise<{ content: string; truncated: boolean }> {
   const abs = assertContained(vaultPath, relPath)
+  await assertNoSymlinkSegments(vaultPath, abs)
   const buffer = await readFile(abs)
   const slice = buffer.subarray(0, maxBytes)
   const truncated = buffer.byteLength > maxBytes
@@ -122,7 +126,14 @@ export async function writeReport(
 ): Promise<string> {
   const reportRoot = assertContained(vaultPath, reportDir)
   const abs = assertContained(vaultPath, join(reportDir, fileName))
+  await assertNoSymlinkSegments(vaultPath, reportRoot)
+  await assertNoSymlinkSegments(vaultPath, abs)
   await mkdir(reportRoot, { recursive: true })
+  await assertNoSymlinkSegments(vaultPath, reportRoot)
+  await assertNoSymlinkSegments(vaultPath, abs)
+  if (Buffer.byteLength(content, 'utf8') > MAX_REPORT_BYTES) {
+    throw new Error(`report exceeds maximum size of ${MAX_REPORT_BYTES} bytes`)
+  }
   await writeFile(abs, content, { flag: 'wx' })
   return abs
 }
