@@ -1,21 +1,38 @@
-# `@deepseek-ai/dsh-kb-daily`
+# `@ly028716/dsh-kb-daily`
 
 [English](README.md) | 中文
 
-独立发布的 DeepSeek Harness/Cordis 插件：扫描 Markdown 知识库，由专用 Agent 生成日报，写入 `<reportDir>/YYYY-MM-DD.md`。
+独立发布的 DeepSeek Harness/Cordis 社区 bundle：扫描 Markdown 知识库，由专用 Agent 生成日报，写入 `<reportDir>/YYYY-MM-DD.md`。
+
+## 兼容性
+
+| 项目 | 值 |
+| --- | --- |
+| 包名 | `@ly028716/dsh-kb-daily` |
+| GitHub 仓库 | `ly028716/dsh-kb-daily` |
+| DSH release train | `0.1.0-rc.7` |
+| Node.js | `22.x` |
+| pnpm | `11.7.0` |
+| 验证命令 | ``.\node_modules\.bin\vitest.cmd run tests/package.spec.ts && pnpm run typecheck && pnpm run build && pnpm pack --dry-run`` |
 
 ## 安装
 
-插件不会自动挂载到基础 bundle；请在需要使用它的部署中安装已发布的包：
+使用 DSH 插件管理器把 bundle 安装并激活到目标 profile：
 
 ```sh
-pnpm add @deepseek-ai/dsh-kb-daily
+dsh plugin --profile <profile> add @ly028716/dsh-kb-daily
 ```
 
-宿主组合必须提供已发布的 `agents`、`tools`、`systemPrompt` 和 `timer` 服务。Agent 的创建/恢复由宿主 Agent factory 提供。`sessionPersistence` 后端是可选的；没有持久化时，恢复会退化为创建新的 Agent。
+如果走 Git 安装，请固定 commit 或 tag：
+
+```sh
+dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
+```
+
+该包通过 `dsh.bundle.patch` 暴露 `cordis.patch.yml`，因此 `dsh plugin ... add <spec>` 会自动注入实际的 Cordis 插件入口。宿主组合必须提供已发布的 `agents`、`tools`、`systemPrompt` 和 `timer` 服务。Agent 的创建与恢复由宿主 Agent factory 提供。`sessionPersistence` 后端是可选的；没有持久化时，恢复会退化为创建新的 Agent。
 
 ```yaml
-- name: '@deepseek-ai/dsh-kb-daily'
+- name: '@ly028716/dsh-kb-daily'
   config:
     vaultPath: /absolute/path/to/vault
     reportDir: Daily

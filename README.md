@@ -1,21 +1,38 @@
-# `@deepseek-ai/dsh-kb-daily`
+# `@ly028716/dsh-kb-daily`
 
 English | [中文](README.zh.md)
 
-Standalone DeepSeek Harness/Cordis plugin that scans a Markdown knowledge base and asks a dedicated agent to write a daily digest at `<reportDir>/YYYY-MM-DD.md`.
+Standalone DeepSeek Harness/Cordis community bundle that scans a Markdown knowledge base and asks a dedicated agent to write a daily digest at `<reportDir>/YYYY-MM-DD.md`.
+
+## Compatibility
+
+| Item | Value |
+| --- | --- |
+| Package | `@ly028716/dsh-kb-daily` |
+| GitHub | `ly028716/dsh-kb-daily` |
+| DSH release train | `0.1.0-rc.7` |
+| Node.js | `22.x` |
+| pnpm | `11.7.0` |
+| Verification command | ``.\node_modules\.bin\vitest.cmd run tests/package.spec.ts && pnpm run typecheck && pnpm run build && pnpm pack --dry-run`` |
 
 ## Installation
 
-Install the published package in the deployment that should use it; it is intentionally not mounted by the base bundle:
+Use the DSH plugin manager to install and activate the bundle in the target profile:
 
 ```sh
-pnpm add @deepseek-ai/dsh-kb-daily
+dsh plugin --profile <profile> add @ly028716/dsh-kb-daily
 ```
 
-The host composition must provide the published `agents`, `tools`, `systemPrompt`, and `timer` services. Agent creation/resume is supplied by the host's agent factory. A session-persistence backend is optional: without one, resume falls back to creating a fresh agent.
+For a Git install, pin an exact commit or tag:
+
+```sh
+dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
+```
+
+The package ships `cordis.patch.yml` through `dsh.bundle.patch`, so `dsh plugin ... add <spec>` injects the actual Cordis entry automatically. The host composition must provide the published `agents`, `tools`, `systemPrompt`, and `timer` services. Agent creation and resume are supplied by the host's agent factory. A session-persistence backend is optional: without one, resume falls back to creating a fresh agent.
 
 ```yaml
-- name: '@deepseek-ai/dsh-kb-daily'
+- name: '@ly028716/dsh-kb-daily'
   config:
     vaultPath: /absolute/path/to/vault
     reportDir: Daily

@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-kb-daily",
+  "name": "@ly028716/dsh-kb-daily",
   "description": "Daily catch-up knowledge-base digest: a dedicated agent scans the vault and writes Daily/YYYY-MM-DD.md",
   "version": "0.1.0-rc.7",
   "publishConfig": {
@@ -7,11 +7,20 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git"
+    "url": "git+https://github.com/ly028716/dsh-kb-daily.git"
+  },
+  "homepage": "https://github.com/ly028716/dsh-kb-daily#readme",
+  "bugs": {
+    "url": "https://github.com/ly028716/dsh-kb-daily/issues"
   },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -21,21 +30,25 @@
       "types": "./lib/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/**/*.js",
     "lib/**/*.d.ts",
     "lib/**/*.js.map",
+    "lib/**/*.d.ts.map",
     "README.md",
     "README.zh.md",
     "README.i18n.yaml",
+    "cordis.patch.yml",
+    "LICENSE",
     "package.json"
   ],
   "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
