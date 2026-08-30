@@ -26,22 +26,33 @@ async function runGitDiff(args: string[]): Promise<Buffer> {
     const output: Buffer[] = []
     const errors: Buffer[] = []
     let size = 0
-    let tooLarge = false
+    let settled = false
+    const rejectTooLarge = () => {
+      if (settled) return
+      settled = true
+      child.stdout.destroy()
+      child.stderr.destroy()
+      child.kill()
+      reject(new DiffError('diff_too_large', `diff exceeds maximum size of ${MAX_DIFF_BYTES} bytes`))
+    }
     child.stdout.on('data', (chunk: Buffer) => {
       size += chunk.byteLength
       if (size > MAX_DIFF_BYTES) {
-        tooLarge = true
-        child.kill()
+        rejectTooLarge()
       } else {
         output.push(chunk)
       }
     })
     child.stderr.on('data', (chunk: Buffer) => errors.push(chunk))
-    child.once('error', reject)
+    child.once('error', error => {
+      if (settled) return
+      settled = true
+      reject(error)
+    })
     child.once('close', code => {
-      if (tooLarge) {
-        reject(new DiffError('diff_too_large', `diff exceeds maximum size of ${MAX_DIFF_BYTES} bytes`))
-      } else if (code !== 0) {
+      if (settled) return
+      settled = true
+      if (code !== 0) {
         reject(new Error(Buffer.concat(errors).toString('utf8').trim() || `git exited with code ${code}`))
       } else {
         resolveOutput(Buffer.concat(output))
@@ -61,6 +72,7 @@ export async function readGitDiff(vaultPath: string, relPath: string, since?: st
     throw new DiffError('diff_unreadable', `cannot read diff target: ${relPath}: ${error instanceof Error ? error.message : String(error)}`)
   }
   if (content.includes(0)) throw new DiffError('binary_file', `binary files are not supported: ${relPath}`)
+  if (content.byteLength > MAX_DIFF_BYTES) throw new DiffError('diff_too_large', `diff exceeds maximum size of ${MAX_DIFF_BYTES} bytes`)
 
   const args = ['-C', resolve(vaultPath), 'diff', '--no-ext-diff', '--unified=3', ...(since === undefined ? ['HEAD'] : [since]), '--', relPath]
   let stdout: Buffer
