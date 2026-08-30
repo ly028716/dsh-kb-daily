@@ -49,6 +49,7 @@ export function vaultRelative(vaultPath: string, abs: string): string {
  */
 export async function listModifiedFiles(vaultPath: string, sinceMs: number): Promise<ModifiedFile[]> {
   const root = resolve(vaultPath)
+  await assertNoSymlinkSegments(root, root)
   const found: ModifiedFile[] = []
   async function walk(dir: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true })

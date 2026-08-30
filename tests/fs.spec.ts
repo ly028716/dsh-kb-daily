@@ -70,6 +70,23 @@ describe('kb-daily fs operations', () => {
       await rm(outside, { recursive: true, force: true })
     }
   })
+  it('rejects a symbolic-link vault root before scanning the directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    const linkedVault = join(root, 'vault-link')
+    try {
+      await writeFile(join(outside, 'escape.md'), '# escape')
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+      await symlink(outside, linkedVault, linkType)
+      await expect(listModifiedFiles(linkedVault, 0)).rejects.toThrow(/symbolic link/i)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return
+      throw error
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
   it('writes a report once and refuses to overwrite', async () => {
     const root = await fixtureVault()
     try {
