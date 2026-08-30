@@ -37,3 +37,73 @@
 - Ruling: adopt `@ly028716/dsh-kb-daily` and the `ly028716/dsh-kb-daily` community repository identity — the checked-out repository's `origin` already points there, while the existing package metadata points at the official DeepSeek namespace. Cost if wrong: metadata and install commands require a later coordinated rename.
 - Ruling: proceed in the current checkout only after the escalated worktree creation succeeded — the sandbox denied the first isolated-worktree operation, but the approved elevated retry produced the requested isolated branch. Cost if wrong: local branch state may need cleanup before handoff.
 
+## Task 1
+
+- Implementer commit: `a93aa62`.
+- Fix-round commit: `4fa22d0`.
+- Review: first pass found a test coverage gap; fix-round review returned CLEAN. The package identity concern was resolved by the existing identity ruling above and documented in both READMEs.
+- Verification: focused package contract tests 3/3, typecheck, build, and clean temporary-directory pack dry-run passed.
+
+## Task 2
+
+- Implementer commit: `467d2d1`.
+- Review: CLEAN; no blocking findings. Non-blocking note: list-modified default-date boundary is covered by the shared clock seam but not a separate assertion.
+- Verification: focused 23/23, full 42/42, typecheck, build, and diff check passed.
+
+## Task 3
+
+- Implementer commit: `199f334`.
+- Fix-round commit: `08e9fe1`.
+- Review: first pass found CI config parsing was local-only and the public invariant entrypoint retained the old package identifier; fix-round review returned CLEAN.
+- Verification: `config:parse`, packed tests, frozen install, and `pnpm run verify` passed; final Task 3 run reported 10 files/43 tests passing.
+
+## Task 4
+
+- Implementer: controller fallback after subagent quota exhaustion; no subagent was available.
+- Commit: `c58ec77`.
+- Verification: focused tests passed on retry with 21/21; full runtime tests 45/45; typecheck, build, pack inspection, and smoke verification passed.
+- Scope review: budget configuration, explicit list metadata, stable bounded selection, prompt disclosure, and bilingual docs only; no Task 5 frontmatter implementation.
+
+## Task 5
+
+- Implementer: controller fallback after subagent quota exhaustion; no subagent was available.
+- Commit: `4f3125f`.
+- Verification: focused prompt/tools/packed tests 8/8, typecheck, and build passed.
+- Scope review: stable frontmatter/section/path guidance and bilingual docs; no Git diff or runner control changes.
+
+## Task 6
+
+- Implementer: controller fallback after subagent quota exhaustion; no subagent was available.
+- Commit: `445f22b`.
+- Verification: Git diff tests 3 cases/8 assertions, typecheck, build, and prior plugin/prompt suites passed; diff-overflow hang was fixed by active child-process termination.
+- Scope review: optional bounded Git context only; non-Git, no-history, binary, oversized, and path-escape cases remain non-fatal/stable.
+
+## Task 7
+
+- Implementer: controller fallback after subagent quota exhaustion; no subagent was available.
+- Commit: `504b0cd`.
+- Verification: runner/plugin tests 10/10, typecheck, and build passed.
+- Scope review: added `RunnerControl`, status states, explicit retry, narrowed resume fallback, and preserved automatic dedupe/timer/handle cleanup.
+
+## Task 8
+
+- Implementer: controller fallback after subagent quota exhaustion; no subagent was available.
+- Commit: `ab67c63`.
+- Verification: runtime full tests 51/51, typecheck, build, and diff check passed.
+- Scope review: fixed lifecycle events, redacted metadata, optional notification duck-typing, approval-required logging, and non-blocking error isolation.
+
+## Task 9
+
+- Status: deferred as P3 product work; no implementation started.
+- Ruling: preserve the stable single-vault default until a concrete multi-vault consumer and tool namespace/lifecycle contract exist. Cost if wrong: a future P3 change will need a new design and migration tests.
+
+## Task 10
+
+- Status: deferred as P3 product work; no implementation started.
+- Ruling: keep historical backfill opt-in and out of the stable default until task-cost limits, date-range semantics, and user demand are validated. Cost if wrong: a future P3 change will need explicit bounded scheduling and recovery tests.
+
+## Final verification snapshot
+
+- Passed: `pnpm run typecheck`, `pnpm run test` (11 files/51 tests), `pnpm run build`, and `pnpm run pack:inspect` (2/2).
+- Blocked: `pnpm run smoke:dsh` and therefore the aggregate `pnpm run verify` release gate. On the current Windows host, DeepSeek Harness `0.1.0-rc.8` hangs while preparing the temporary profile after `plugin add` when `--dump-config` is invoked. This is an environment/CLI profile-healing issue, not a failing package assertion; the smoke script was restored after diagnosis and no timeout workaround was retained.
+- Final implementation scope: Tasks 1–8 delivered; Tasks 9–10 remain intentionally deferred P3 work.

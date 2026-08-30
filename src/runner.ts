@@ -33,7 +33,10 @@ type LoggerLike = Partial<Record<'info' | 'warn' | 'error', LogMethod>>
 /** Emit a structured, redacted lifecycle event when the host exposes logging. */
 export function logRunnerEvent(ctx: Context, event: RunnerEvent, fields: Record<string, unknown>, level: 'info' | 'warn' | 'error' = 'info'): void {
   const service = (ctx as unknown as { logger?: unknown }).logger
-  const logger = typeof service === 'function' ? service('kb-daily') as LoggerLike : service as LoggerLike | undefined
+  let logger: LoggerLike | undefined
+  try {
+    logger = typeof service === 'function' ? service('kb-daily') as LoggerLike : service as LoggerLike | undefined
+  } catch { return }
   const method = logger?.[level]
   if (typeof method === 'function') {
     try { method(event, fields) } catch { /* logging must not break the runner */ }
@@ -50,7 +53,7 @@ function notifyHost(ctx: Context, event: 'kb-daily.created' | 'kb-daily.failed',
   const notification = (ctx as unknown as { notification?: unknown }).notification
   if (typeof notification !== 'object' || notification === null || !('send' in notification) || typeof notification.send !== 'function') return
   try {
-    void (notification.send as (payload: unknown) => unknown)({ event, ...fields })
+    Promise.resolve((notification.send as (payload: unknown) => unknown)({ event, ...fields })).catch(() => undefined)
   } catch { /* optional notifications must not break the runner */ }
 }
 
