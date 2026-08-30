@@ -35,7 +35,7 @@ describe('kb-daily path containment', () => {
   it('rejects report directories and file names that escape the vault', async () => {
     const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
     try {
-      expect(() => assertContained(root, 'Daily/../..\\escape.md')).toThrow(/escapes the vault/)
+      expect(() => assertContained(root, join('Daily', '..', '..', 'escape.md'))).toThrow(/escapes the vault/)
       expect(() => assertContained(root, '../outside')).toThrow(/escapes the vault/)
     } finally {
       await rm(root, { recursive: true, force: true })
