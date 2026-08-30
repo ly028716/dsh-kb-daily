@@ -12,6 +12,11 @@ describe('kb-daily prompt content', () => {
     expect(text).toContain('scan scope')
     expect(text).toContain('number of files returned')
     expect(text).toContain('scan was truncated')
+    expect(text).toContain('YAML frontmatter')
+    expect(text).toContain('generated_by: dsh-kb-daily')
+    expect(text).toContain('今日概览')
+    expect(text).toContain('变更文件')
+    expect(text).toContain('vault-relative paths')
   })
   it('task framing carries the target date', () => {
     const framing = taskFraming('2026-08-17')

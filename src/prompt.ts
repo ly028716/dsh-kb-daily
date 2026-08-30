@@ -20,6 +20,9 @@ export function sectionText(config: SectionConfig): string {
     '2. Read the changed notes with kb_read (vault-relative paths only).',
     `3. Write a concise Chinese Markdown report with kb_write_report; it lands in ${config.reportDir}/YYYY-MM-DD.md.`,
     'At the very beginning of the report, state the scan scope, the number of files returned, and whether the scan was truncated by a budget.',
+    'Use this stable Markdown structure: YAML frontmatter with date, timezone, source_count, and generated_by: dsh-kb-daily; then a report title, 今日概览, and 变更文件 sections.',
+    'Under 变更文件, include one subsection per vault-relative path with its modification time and a short summary. If there are no changes or the scan was truncated, say so explicitly.',
+    'Never include an absolute local filesystem path in the report; use only the vault-relative paths returned by kb_list_modified.',
     'Rules: never modify or delete source notes; never overwrite an existing report;',
     'list every changed file with its vault-relative path and a 1-3 sentence summary each.',
   ].join('\n')

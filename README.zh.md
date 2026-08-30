@@ -71,6 +71,8 @@ dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
 - `kb_read` 读取 vault-relative 路径，最多返回 64 KiB 且不会截断 UTF-8 字符。越出 vault 的词法路径会被拒绝。
 - `kb_write_report` 根据当前配置时区的本地日期计算目标路径，不接受模型提供的输出路径。写入采用独占创建，因此不会覆盖已有日报。
 
+日报采用稳定的 YAML frontmatter（`date`、`timezone`、`source_count`、`generated_by`），随后是“今日概览”和“变更文件”章节。文件条目只使用 vault-relative 路径；无变更和预算截断都必须明确说明。
+
 `writePolicy: ask` 通过标准 DSH `tools/pre-execute` 返回 ask 决策，由宿主审批机制决定是否继续；如果没有审批通道，标准流水线会默认拒绝。插件不会写入源笔记，也不会绕过宿主工具策略。
 
 所有 prompt section、tool、审批 listener、timer 和由 runner 创建的 Agent handle 都由 Cordis effect 归属插件。卸载插件会移除这些注册并释放 runner 创建的 Agent；重新加载会以相同配置的 session id 开启新的生命周期。

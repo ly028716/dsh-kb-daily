@@ -71,6 +71,8 @@ The plugin registers three model tools:
 - `kb_read` reads a vault-relative file with a UTF-8-safe 64 KiB cap. Lexical paths that escape the vault are rejected.
 - `kb_write_report` derives the destination from the current configured local date and never accepts a model-supplied output path. It uses exclusive file creation, so an existing report is never overwritten.
 
+Reports use stable YAML frontmatter (`date`, `timezone`, `source_count`, `generated_by`), followed by `今日概览` and `变更文件` sections. File entries use vault-relative paths only; no-change and budget-truncated scans are stated explicitly.
+
 `writePolicy: ask` returns the standard DSH `tools/pre-execute` ask decision. The host approval mechanism decides whether the write continues; if no approval channel is installed, the standard pipeline fails closed. The plugin does not write source notes or bypass host tool policy.
 
 All prompt sections, tools, approval listeners, timers, and agent handles are owned by the plugin's Cordis effects. Unloading the plugin removes them and disposes agents created by the runner. Reloading the plugin starts a fresh lifecycle with the same configured session id.
