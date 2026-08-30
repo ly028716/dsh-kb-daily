@@ -19,6 +19,7 @@ export function sectionText(config: SectionConfig): string {
     '1. Call kb_list_modified to find notes changed today (vault-local date).',
     '2. Read the changed notes with kb_read (vault-relative paths only).',
     `3. Write a concise Chinese Markdown report with kb_write_report; it lands in ${config.reportDir}/YYYY-MM-DD.md.`,
+    'At the very beginning of the report, state the scan scope, the number of files returned, and whether the scan was truncated by a budget.',
     'Rules: never modify or delete source notes; never overwrite an existing report;',
     'list every changed file with its vault-relative path and a 1-3 sentence summary each.',
   ].join('\n')

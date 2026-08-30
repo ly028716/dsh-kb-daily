@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { dateKey, dateStartMs, reportFileName } from './date.ts'
-import { listModifiedFiles, readVaultFile, vaultRelative, writeReport } from './fs.ts'
+import { boundModifiedFiles, listModifiedFiles, readVaultFile, vaultRelative, writeReport, type ModifiedFilesBudget } from './fs.ts'
 import { resolveReportPath } from './paths.ts'
 
 export interface ToolsConfig {
@@ -12,6 +12,9 @@ export interface ToolsConfig {
   reportDir: string
   timeZone: string
   now?: () => Date
+  maxFiles?: number
+  maxTotalBytes?: number
+  maxFileBytes?: number
 }
 
 const ERROR_SCHEMA = {
@@ -35,7 +38,11 @@ const FILE_SCHEMA = {
 const LIST_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  properties: { files: { type: 'array', items: FILE_SCHEMA, required: true } },
+  properties: {
+    files: { type: 'array', items: FILE_SCHEMA, required: true },
+    truncated: { type: 'boolean', required: true },
+    totalBytes: { type: 'number', required: true },
+  },
 } as const
 
 const READ_SCHEMA = {
@@ -77,6 +84,11 @@ function failure(code: string, error: unknown): { code: string; message: string 
 /** Register the three knowledge-base tools and return one idempotent disposer. */
 export function registerTools(ctx: Context, config: ToolsConfig): () => void {
   const now = config.now ?? (() => new Date())
+  const budget: ModifiedFilesBudget = {
+    ...(config.maxFiles === undefined ? {} : { maxFiles: config.maxFiles }),
+    ...(config.maxTotalBytes === undefined ? {} : { maxTotalBytes: config.maxTotalBytes }),
+    ...(config.maxFileBytes === undefined ? {} : { maxFileBytes: config.maxFileBytes }),
+  }
   const disposers: Array<() => void> = []
   try {
     disposers.push(ctx.tools.register(defineTool({
@@ -89,7 +101,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
       async execute(args) {
         const since = args.since ?? dateKey(now(), config.timeZone)
         try {
-          return { files: await listModifiedFiles(config.vaultPath, dateStartMs(since, config.timeZone)) }
+          return boundModifiedFiles(await listModifiedFiles(config.vaultPath, dateStartMs(since, config.timeZone)), budget)
         } catch (error) {
           return failure('list_failed', error)
         }

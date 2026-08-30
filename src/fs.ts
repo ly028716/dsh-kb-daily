@@ -10,6 +10,20 @@ export interface ModifiedFile {
   size: number
 }
 
+/** Explicit scan budgets applied after the deterministic vault walk. */
+export interface ModifiedFilesBudget {
+  maxFiles?: number
+  maxTotalBytes?: number
+  maxFileBytes?: number
+}
+
+/** A bounded scan result with enough metadata for callers to disclose truncation. */
+export interface ModifiedFilesResult {
+  files: ModifiedFile[]
+  truncated: boolean
+  totalBytes: number
+}
+
 /** Directories never scanned for notes. */
 const SKIP_DIRECTORIES = new Set(['.git', '.obsidian', '.trash', 'node_modules'])
 
@@ -55,6 +69,30 @@ export async function listModifiedFiles(vaultPath: string, sinceMs: number): Pro
   await walk(root)
   found.sort((a, b) => a.path.localeCompare(b.path))
   return found
+}
+
+/** Apply explicit budgets in stable path order without silently discarding scope. */
+export function boundModifiedFiles(files: ModifiedFile[], budget: ModifiedFilesBudget = {}): ModifiedFilesResult {
+  const selected: ModifiedFile[] = []
+  let totalBytes = 0
+  let truncated = false
+  for (const file of files) {
+    if (budget.maxFileBytes !== undefined && file.size > budget.maxFileBytes) {
+      truncated = true
+      continue
+    }
+    if (budget.maxFiles !== undefined && selected.length >= budget.maxFiles) {
+      truncated = true
+      continue
+    }
+    if (budget.maxTotalBytes !== undefined && totalBytes + file.size > budget.maxTotalBytes) {
+      truncated = true
+      continue
+    }
+    selected.push(file)
+    totalBytes += file.size
+  }
+  return { files: selected, truncated, totalBytes }
 }
 
 /**

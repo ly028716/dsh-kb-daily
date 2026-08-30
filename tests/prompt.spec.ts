@@ -9,6 +9,9 @@ describe('kb-daily prompt content', () => {
     expect(text).toContain('kb_write_report')
     expect(text).toContain('Daily/YYYY-MM-DD.md')
     expect(text).toContain('never modify or delete source notes')
+    expect(text).toContain('scan scope')
+    expect(text).toContain('number of files returned')
+    expect(text).toContain('scan was truncated')
   })
   it('task framing carries the target date', () => {
     const framing = taskFraming('2026-08-17')

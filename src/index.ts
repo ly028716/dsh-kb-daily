@@ -34,6 +34,12 @@ export interface Config {
   writePolicy?: 'ask' | 'allow'
   /** Day-rollover re-check interval in ms (default 1 hour). */
   checkIntervalMs?: number
+  /** Maximum number of modified files included in one scan. */
+  maxFiles?: number
+  /** Maximum aggregate byte size of files included in one scan. */
+  maxTotalBytes?: number
+  /** Maximum byte size of an individual file included in one scan. */
+  maxFileBytes?: number
 }
 
 export const Config = z.object({
@@ -45,6 +51,9 @@ export const Config = z.object({
   model: z.string(),
   writePolicy: z.union([z.const('ask'), z.const('allow')]).default('ask'),
   checkIntervalMs: z.number().default(60 * 60 * 1000),
+  maxFiles: z.number().min(1).step(1),
+  maxTotalBytes: z.number().min(1).step(1),
+  maxFileBytes: z.number().min(1).step(1),
 }) as unknown as z<Config>
 
 /** Validate the vault and install all plugin-owned runtime effects. */
@@ -54,6 +63,15 @@ export function apply(ctx: Context, config: Config): void {
   const agentId = config.agentId ?? 'kb-daily'
   const writePolicy = config.writePolicy ?? 'ask'
   const checkIntervalMs = config.checkIntervalMs ?? 60 * 60 * 1000
+  for (const [name, value] of [
+    ['maxFiles', config.maxFiles],
+    ['maxTotalBytes', config.maxTotalBytes],
+    ['maxFileBytes', config.maxFileBytes],
+  ] as const) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
+      throw new Error(`kb-daily: ${name} must be a positive integer, got ${value}`)
+    }
+  }
   if (!Number.isFinite(checkIntervalMs) || checkIntervalMs <= 0) {
     throw new Error(`kb-daily: checkIntervalMs must be a positive finite number, got ${checkIntervalMs}`)
   }
@@ -71,7 +89,14 @@ export function apply(ctx: Context, config: Config): void {
     const disposers: Array<() => void | Promise<void>> = []
     try {
       disposers.push(ctx.systemPrompt.section({ name: KB_SECTION_NAME, order: 200, text: sectionText({ reportDir }) }))
-      disposers.push(registerTools(ctx, { vaultPath: config.vaultPath, reportDir, timeZone }))
+      disposers.push(registerTools(ctx, {
+        vaultPath: config.vaultPath,
+        reportDir,
+        timeZone,
+        ...(config.maxFiles === undefined ? {} : { maxFiles: config.maxFiles }),
+        ...(config.maxTotalBytes === undefined ? {} : { maxTotalBytes: config.maxTotalBytes }),
+        ...(config.maxFileBytes === undefined ? {} : { maxFileBytes: config.maxFileBytes }),
+      }))
       disposers.push(registerWriteApproval(ctx, { writePolicy, reportDir }))
       const runnerConfig = {
         vaultPath: config.vaultPath,

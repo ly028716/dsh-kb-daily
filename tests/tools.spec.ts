@@ -40,7 +40,7 @@ describe('kb-daily model tools', () => {
       const dispose = registerTools(ctx, config)
 
       const listed = await registered.get('kb_list_modified')!.execute({ since: '2000-01-01' }, exec)
-      expect(listed).toEqual({ files: [{ path: 'notes/today.md', size: 7 }] })
+      expect(listed).toEqual({ files: [{ path: 'notes/today.md', size: 7 }], truncated: false, totalBytes: 7 })
       expect(await registered.get('kb_read')!.execute({ path: 'notes/today.md' }, exec)).toEqual({ content: '# today', truncated: false })
       expect(await registered.get('kb_read')!.execute({ path: '../outside.md' }, exec)).toMatchObject({ code: 'read_failed' })
 
@@ -84,6 +84,26 @@ describe('kb-daily model tools', () => {
       })
       const value = await registered.get('kb_write_report')!.execute({ content: '# report' }, exec)
       expect(value).toMatchObject({ date: '2026-08-25', created: true })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+  it('returns explicit budget metadata and keeps the sorted file prefix', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-tools-'))
+    try {
+      await writeFile(join(root, 'z.md'), 'zz')
+      await writeFile(join(root, 'a.md'), 'a')
+      const { ctx, registered } = toolContext()
+      registerTools(ctx, {
+        vaultPath: root,
+        reportDir: 'Daily',
+        timeZone: 'UTC',
+        maxFiles: 1,
+        maxTotalBytes: 1,
+        maxFileBytes: 2,
+      })
+      const value = await registered.get('kb_list_modified')!.execute({ since: '2000-01-01' }, exec)
+      expect(value).toEqual({ files: [{ path: 'a.md', size: 1 }], truncated: true, totalBytes: 1 })
     } finally {
       await rm(root, { recursive: true, force: true })
     }

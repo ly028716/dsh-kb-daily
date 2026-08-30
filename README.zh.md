@@ -56,6 +56,9 @@ dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
 | `model` | 由部署解析 | 可选的 Agent model 路由。 |
 | `writePolicy` | `ask` | `ask` 请求宿主审批；`allow` 允许本插件的写工具继续执行。 |
 | `checkIntervalMs` | `3600000` | 跨日检查间隔。 |
+| `maxFiles` | 不限 | 单次扫描最多纳入的文件数，必须是正整数。 |
+| `maxTotalBytes` | 不限 | 单次扫描最多纳入的文件总字节数，必须是正整数。 |
+| `maxFileBytes` | 不限 | 单文件纳入上限，超过的文件会被排除并标记为发生截断，必须是正整数。 |
 
 ## 运行行为
 
@@ -64,6 +67,7 @@ dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
 插件注册三个模型工具：
 
 - `kb_list_modified` 递归扫描 `vaultPath` 下的 Markdown 文件，跳过隐藏/维护目录，并以配置时区的本地午夜作为 cutoff。
+- `kb_list_modified` 按稳定路径顺序返回文件，并附带 `truncated` 与 `totalBytes`。如果预算排除了文件，结果是不完整摘要；Agent 必须明确披露，不能让用户误认为覆盖了整个 vault。
 - `kb_read` 读取 vault-relative 路径，最多返回 64 KiB 且不会截断 UTF-8 字符。越出 vault 的词法路径会被拒绝。
 - `kb_write_report` 根据当前配置时区的本地日期计算目标路径，不接受模型提供的输出路径。写入采用独占创建，因此不会覆盖已有日报。
 

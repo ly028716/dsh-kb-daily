@@ -56,6 +56,9 @@ The package ships `cordis.patch.yml` through `dsh.bundle.patch`, so `dsh plugin 
 | `model` | deployment-resolved | Optional agent model route. |
 | `writePolicy` | `ask` | `ask` requests the host approval service; `allow` permits this plugin's write tool to proceed. |
 | `checkIntervalMs` | `3600000` | Interval for day-rollover checks. |
+| `maxFiles` | unlimited | Optional positive integer cap on files included in one scan. |
+| `maxTotalBytes` | unlimited | Optional positive integer cap on aggregate bytes included in one scan. |
+| `maxFileBytes` | unlimited | Optional positive integer cap per file; larger files are excluded and marked as truncation. |
 
 ## Runtime behavior
 
@@ -64,6 +67,7 @@ On load and on each interval, the plugin checks whether today's report already e
 The plugin registers three model tools:
 
 - `kb_list_modified` recursively scans Markdown files below `vaultPath`, skips hidden/bookkeeping directories, and uses the configured timezone's local midnight as the cutoff.
+- `kb_list_modified` returns stable path order plus `truncated` and `totalBytes` metadata. When any scan budget excludes files, the result is an incomplete summary; the agent must disclose that rather than presenting it as full-vault coverage.
 - `kb_read` reads a vault-relative file with a UTF-8-safe 64 KiB cap. Lexical paths that escape the vault are rejected.
 - `kb_write_report` derives the destination from the current configured local date and never accepts a model-supplied output path. It uses exclusive file creation, so an existing report is never overwritten.
 

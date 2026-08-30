@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:f
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { listModifiedFiles, MAX_REPORT_BYTES, readVaultFile, reportExists, writeReport } from '../src/fs.ts'
+import { boundModifiedFiles, listModifiedFiles, MAX_REPORT_BYTES, readVaultFile, reportExists, writeReport } from '../src/fs.ts'
 
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
@@ -38,6 +38,22 @@ describe('kb-daily fs operations', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+  it('bounds an empty scan, exact limits, file counts, and aggregate bytes explicitly', () => {
+    const files = [
+      { path: 'a.md', size: 2 },
+      { path: 'b.md', size: 3 },
+      { path: 'c.md', size: 4 },
+    ]
+    expect(boundModifiedFiles([], { maxFiles: 1 })).toEqual({ files: [], truncated: false, totalBytes: 0 })
+    expect(boundModifiedFiles(files, { maxFiles: 3, maxTotalBytes: 9, maxFileBytes: 4 })).toEqual({
+      files,
+      truncated: false,
+      totalBytes: 9,
+    })
+    expect(boundModifiedFiles(files, { maxFiles: 2 })).toEqual({ files: files.slice(0, 2), truncated: true, totalBytes: 5 })
+    expect(boundModifiedFiles(files, { maxTotalBytes: 4 })).toEqual({ files: files.slice(0, 1), truncated: true, totalBytes: 2 })
+    expect(boundModifiedFiles(files, { maxFileBytes: 3 })).toEqual({ files: files.slice(0, 2), truncated: true, totalBytes: 5 })
   })
   it('rejects reads through symbolic-link path segments before opening the file', async () => {
     const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
