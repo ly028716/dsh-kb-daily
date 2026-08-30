@@ -44,11 +44,33 @@ dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
     checkIntervalMs: 3600000
 ```
 
+### 多 Vault（显式启用）
+
+当一个 profile 需要管理多个相互独立的知识库时，使用 `vaults` 数组。每个条目必须提供稳定的 `id` 和明确的 `agentId`；插件会注册独立工具：`kb_<id>_list_modified`、`kb_<id>_read`、`kb_<id>_read_diff`、`kb_<id>_write_report`。
+
+```yaml
+- name: '@ly028716/dsh-kb-daily'
+  config:
+    vaults:
+      - id: work
+        vaultPath: /absolute/path/to/work-vault
+        reportDir: Daily
+        timeZone: Asia/Shanghai
+        agentId: kb-daily-work
+      - id: personal
+        vaultPath: /absolute/path/to/personal-vault
+        reportDir: Journal
+        timeZone: Asia/Shanghai
+        agentId: kb-daily-personal
+```
+
+Vault 的 `id` 和 `agentId` 必须唯一；Vault 路径不能相同、嵌套或重叠。旧的单 Vault 字段不能与 `vaults` 同时配置。每个条目拥有独立的 prompt section、工具、审批 listener、timer 和 runner 生命周期；多 Vault 是显式 opt-in，不会隐式扫描用户目录。
+
 ## 配置
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
-| `vaultPath` | 必填 | Markdown 知识库的绝对路径。缺失、不可读或不是目录时插件加载失败。 |
+| `vaultPath` | 旧模式必填 | Markdown 知识库的绝对路径。多 Vault 模式请改用显式的 `vaults` 数组。 |
 | `reportDir` | `Daily` | 日报所在的、必须位于 vault 内的子目录。 |
 | `timeZone` | 系统 IANA 时区 | 用于日期键和本地日扫描起点的时区。 |
 | `agentId` | `kb-daily` | 专用 Agent 的稳定 session id。 |
@@ -64,13 +86,15 @@ dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
 
 插件加载时以及每次 timer tick 都会检查今天的日报是否存在。若已存在，不会调度 Agent；若不存在，会优先恢复 `agentId`，持久化不可用时回退到 `agents.create()`，然后排队一个任务回合。in-flight 与“每天一次”守卫会阻止重复任务。runner 错误会被隔离，宿主 timer 仍可继续；同一天失败的尝试不会重试，直到插件重启或进入下一个本地日。
 
-插件注册三个模型工具：
+旧的单 Vault 模式注册四个模型工具：
 
 - `kb_list_modified` 递归扫描 `vaultPath` 下的 Markdown 文件，跳过隐藏/维护目录，并以配置时区的本地午夜作为 cutoff。
 - `kb_list_modified` 按稳定路径顺序返回文件，并附带 `truncated` 与 `totalBytes`。如果预算排除了文件，结果是不完整摘要；Agent 必须明确披露，不能让用户误认为覆盖了整个 vault。
 - `kb_read` 读取 vault-relative 路径，最多返回 64 KiB 且不会截断 UTF-8 字符。越出 vault 的词法路径会被拒绝。
 - `kb_read_diff` 是可选的 Git 增强，限制为 128 KiB；非 Git vault、无历史、二进制文件和超限 diff 都返回稳定的非致命错误。
 - `kb_write_report` 根据当前配置时区的本地日期计算目标路径，不接受模型提供的输出路径。写入采用独占创建，因此不会覆盖已有日报。
+
+多 Vault 模式下，每个 Vault 会在自己的 `kb_<id>_*` 命名空间下获得同样的四项能力；不同条目之间不共享可变 runner、工具注册、审批 listener、timer 或报告锁。
 
 日报采用稳定的 YAML frontmatter（`date`、`timezone`、`source_count`、`generated_by`），随后是“今日概览”和“变更文件”章节。文件条目只使用 vault-relative 路径；无变更和预算截断都必须明确说明。
 

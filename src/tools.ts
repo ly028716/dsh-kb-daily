@@ -13,9 +13,28 @@ export interface ToolsConfig {
   reportDir: string
   timeZone: string
   now?: () => Date
+  names?: ToolNames
   maxFiles?: number
   maxTotalBytes?: number
   maxFileBytes?: number
+}
+
+export interface ToolNames {
+  listModified: string
+  read: string
+  readDiff: string
+  writeReport: string
+}
+
+/** Return stable model-tool names; legacy single-vault names remain unchanged. */
+export function toolNames(namespace?: string): ToolNames {
+  const prefix = namespace === undefined ? 'kb' : `kb_${namespace}`
+  return {
+    listModified: `${prefix}_list_modified`,
+    read: `${prefix}_read`,
+    readDiff: `${prefix}_read_diff`,
+    writeReport: `${prefix}_write_report`,
+  }
 }
 
 const ERROR_SCHEMA = {
@@ -94,6 +113,7 @@ function failure(code: string, error: unknown): { code: string; message: string 
 /** Register the three knowledge-base tools and return one idempotent disposer. */
 export function registerTools(ctx: Context, config: ToolsConfig): () => void {
   const now = config.now ?? (() => new Date())
+  const names = config.names ?? toolNames()
   const budget: ModifiedFilesBudget = {
     ...(config.maxFiles === undefined ? {} : { maxFiles: config.maxFiles }),
     ...(config.maxTotalBytes === undefined ? {} : { maxTotalBytes: config.maxTotalBytes }),
@@ -102,7 +122,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
   const disposers: Array<() => void> = []
   try {
     disposers.push(ctx.tools.register(defineTool({
-      name: 'kb_list_modified',
+      name: names.listModified,
       description: 'List Markdown files modified since a YYYY-MM-DD date in the configured vault time zone.',
       parameters: {
         since: { type: 'string', description: 'YYYY-MM-DD; defaults to today.' },
@@ -119,7 +139,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
     })))
 
     disposers.push(ctx.tools.register(defineTool({
-      name: 'kb_read',
+      name: names.read,
       description: 'Read one Markdown file by a vault-relative path; paths outside the vault are rejected.',
       parameters: {
         path: { type: 'string', required: true, description: 'Vault-relative Markdown path.' },
@@ -135,7 +155,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
     })))
 
     disposers.push(ctx.tools.register(defineTool({
-      name: 'kb_read_diff',
+      name: names.readDiff,
       description: 'Read an optional bounded Git diff for a vault-relative Markdown file.',
       parameters: {
         path: { type: 'string', required: true, description: 'Vault-relative Markdown path.' },
@@ -153,7 +173,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
     })))
 
     disposers.push(ctx.tools.register(defineTool({
-      name: 'kb_write_report',
+      name: names.writeReport,
       description: 'Write today\'s Markdown report under reportDir/YYYY-MM-DD.md without overwriting an existing report.',
       parameters: {
         content: { type: 'string', required: true, description: 'Complete Markdown report content.' },

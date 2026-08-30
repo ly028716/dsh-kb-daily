@@ -5,12 +5,14 @@ import { logRunnerEvent } from './runner.ts'
 export interface ApprovalConfig {
   writePolicy: 'ask' | 'allow'
   reportDir: string
+  writeToolName?: string
 }
 
 /** Route report writes through the host approval service when policy is ask. */
 export function registerWriteApproval(ctx: Context, config: ApprovalConfig): () => void {
+  const writeToolName = config.writeToolName ?? 'kb_write_report'
   return ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
-    if (exec.name !== 'kb_write_report' || config.writePolicy === 'allow') return next()
+    if (exec.name !== writeToolName || config.writePolicy === 'allow') return next()
     logRunnerEvent(ctx, 'kb-daily.approval-required', { status: 'approval-required' })
     return { kind: 'ask', reason: `Write the daily knowledge-base report under ${config.reportDir}.` }
   })

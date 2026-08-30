@@ -23,4 +23,11 @@ describe('kb-daily write policy', () => {
     await expect(listener({ name: 'kb_read' }, next)).resolves.toEqual({ kind: 'allow' })
     expect(next).toHaveBeenCalledTimes(2)
   })
+
+  it('asks for a namespaced report write in multi-vault mode', async () => {
+    let listener!: (exec: { name: string }, next: () => Promise<{ kind: 'allow' }>) => Promise<unknown>
+    const ctx = { on: vi.fn((_name: string, callback: typeof listener) => { listener = callback; return vi.fn() }) } as never
+    registerWriteApproval(ctx, { writePolicy: 'ask', reportDir: 'Journal', writeToolName: 'kb_personal_write_report' })
+    await expect(listener({ name: 'kb_personal_write_report' }, vi.fn(async () => ({ kind: 'allow' as const })))).resolves.toEqual({ kind: 'ask', reason: expect.stringContaining('Journal') })
+  })
 })

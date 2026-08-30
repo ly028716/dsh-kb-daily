@@ -94,8 +94,12 @@
 
 ## Task 9
 
-- Status: deferred as P3 product work; no implementation started.
-- Ruling: preserve the stable single-vault default until a concrete multi-vault consumer and tool namespace/lifecycle contract exist. Cost if wrong: a future P3 change will need a new design and migration tests.
+- Status: implemented as explicit opt-in multi-vault configuration.
+- Contract: legacy single-vault fields remain compatible; multi-vault uses `vaults[]` entries with stable `id`, required `vaultPath` and `agentId`, per-vault report directory/time zone/policy/budgets, and no implicit directory discovery.
+- Conflict rules: duplicate vault ids and agent ids, mixed legacy plus multi-vault fields, invalid ids, and identical/nested/overlapping vault paths are rejected before registration.
+- Isolation: each entry owns its namespaced tools (`kb_<id>_*`), prompt section, approval listener, timer, and runner lifecycle; report writes remain scoped to that vault.
+- Verification: focused plugin/approval tests 10/10, full runtime tests 54/54, typecheck, build, and pack inspection 2/2 passed.
+- Commit: pending final Task 9 commit.
 
 ## Task 10
 
@@ -106,4 +110,4 @@
 
 - Passed: `pnpm run typecheck`, `pnpm run test` (11 files/51 tests), `pnpm run build`, and `pnpm run pack:inspect` (2/2).
 - Blocked: `pnpm run smoke:dsh` and therefore the aggregate `pnpm run verify` release gate. On the current Windows host, DeepSeek Harness `0.1.0-rc.8` hangs while preparing the temporary profile after `plugin add` when `--dump-config` is invoked. This is an environment/CLI profile-healing issue, not a failing package assertion; the smoke script was restored after diagnosis and no timeout workaround was retained.
-- Final implementation scope: Tasks 1–8 delivered; Tasks 9–10 remain intentionally deferred P3 work.
+- Final implementation scope: Tasks 1–9 delivered; Task 10 remains intentionally deferred P3 work.

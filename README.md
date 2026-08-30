@@ -44,11 +44,33 @@ The package ships `cordis.patch.yml` through `dsh.bundle.patch`, so `dsh plugin 
     checkIntervalMs: 3600000
 ```
 
+### Multiple vaults (explicit opt-in)
+
+Use `vaults` when one profile owns more than one independent knowledge base. Each entry requires a stable `id` and an explicit `agentId`; the plugin creates isolated tools named `kb_<id>_list_modified`, `kb_<id>_read`, `kb_<id>_read_diff`, and `kb_<id>_write_report`.
+
+```yaml
+- name: '@ly028716/dsh-kb-daily'
+  config:
+    vaults:
+      - id: work
+        vaultPath: /absolute/path/to/work-vault
+        reportDir: Daily
+        timeZone: Asia/Shanghai
+        agentId: kb-daily-work
+      - id: personal
+        vaultPath: /absolute/path/to/personal-vault
+        reportDir: Journal
+        timeZone: Asia/Shanghai
+        agentId: kb-daily-personal
+```
+
+Vault ids and agent ids must be unique. Vault paths cannot be identical, nested, or overlapping. The legacy single-vault fields and `vaults` cannot be configured together. Each entry owns its prompt section, tools, approval listener, timer, and runner lifecycle; multi-vault mode is opt-in and has no implicit user-directory scanning.
+
 ## Configuration
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `vaultPath` | required | Absolute Markdown-vault directory. The plugin fails to load if it is missing, unreadable, or not a directory. |
+| `vaultPath` | required for legacy mode | Absolute Markdown-vault directory. In multi-vault mode use the explicit `vaults` array instead. |
 | `reportDir` | `Daily` | Contained subdirectory for reports. |
 | `timeZone` | system IANA zone | Zone used for the date key and local-day scan cutoff. |
 | `agentId` | `kb-daily` | Stable session id for the dedicated agent. |
@@ -64,13 +86,15 @@ The package ships `cordis.patch.yml` through `dsh.bundle.patch`, so `dsh plugin 
 
 On load and on each interval, the plugin checks whether today's report already exists. If it does, no agent work is scheduled. Otherwise it resumes `agentId` when possible, falls back to `agents.create()` when persistence is unavailable, and queues one task turn. An in-flight and once-per-local-day guard prevents duplicate work. Runner failures are contained so the host timer remains usable; a failed same-day attempt is not retried until restart or the next local day.
 
-The plugin registers three model tools:
+The plugin registers four model tools in legacy single-vault mode:
 
 - `kb_list_modified` recursively scans Markdown files below `vaultPath`, skips hidden/bookkeeping directories, and uses the configured timezone's local midnight as the cutoff.
 - `kb_list_modified` returns stable path order plus `truncated` and `totalBytes` metadata. When any scan budget excludes files, the result is an incomplete summary; the agent must disclose that rather than presenting it as full-vault coverage.
 - `kb_read` reads a vault-relative file with a UTF-8-safe 64 KiB cap. Lexical paths that escape the vault are rejected.
 - `kb_read_diff` is an optional Git enhancement with a 128 KiB cap; non-Git vaults, missing history, binary files, and oversized diffs return stable non-fatal errors.
 - `kb_write_report` derives the destination from the current configured local date and never accepts a model-supplied output path. It uses exclusive file creation, so an existing report is never overwritten.
+
+In multi-vault mode, each vault receives the same four capabilities under its `kb_<id>_*` namespace; there is no shared mutable runner, tool registration, approval listener, timer, or report lock between entries.
 
 Reports use stable YAML frontmatter (`date`, `timezone`, `source_count`, `generated_by`), followed by `今日概览` and `变更文件` sections. File entries use vault-relative paths only; no-change and budget-truncated scans are stated explicitly.
 
