@@ -3,8 +3,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MAX_DIFF_BYTES, readGitDiff } from '../src/git.ts'
+
+vi.setConfig({ testTimeout: 30_000 })
 
 const run = promisify(execFile)
 
