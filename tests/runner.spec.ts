@@ -93,6 +93,30 @@ describe('kb-daily runner', () => {
     }
   })
 
+  it('emits fixed lifecycle events with redacted operational fields', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-log-'))
+    try {
+      const info = vi.fn()
+      const agents = {
+        get: vi.fn(() => undefined),
+        resume: vi.fn(async () => { throw new Error('no persistence') }),
+        create: vi.fn(async () => ({ agent: { followup: vi.fn() }, dispose: vi.fn() })),
+      }
+      const ctx = { agents, logger: { info }, interval: vi.fn(() => vi.fn()) } as never
+      const runner = createRunner(ctx, {
+        vaultPath: root, reportDir: 'Daily', timeZone: 'UTC', agentId: 'kb-daily', checkIntervalMs: 1000,
+      }, () => 'run')
+      await vi.waitFor(() => expect(info).toHaveBeenCalledWith('kb-daily.created', expect.objectContaining({ status: 'ran', fileCount: null })))
+      expect(info).toHaveBeenCalledWith('kb-daily.started', expect.objectContaining({ status: 'running' }))
+      const serialized = JSON.stringify(info.mock.calls)
+      expect(serialized).not.toContain(root)
+      expect(serialized).not.toContain('no persistence')
+      await runner.stop()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('disposes created agent handles when a runner is stopped and restarted', async () => {
     const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-'))
     try {

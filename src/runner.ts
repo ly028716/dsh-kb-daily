@@ -26,6 +26,34 @@ export interface RunOptions {
 
 export type CheckOutcome = 'ran' | 'already-done'
 
+export type RunnerEvent = 'kb-daily.started' | 'kb-daily.skipped' | 'kb-daily.created' | 'kb-daily.failed' | 'kb-daily.approval-required'
+type LogMethod = (message: unknown, ...params: unknown[]) => void
+type LoggerLike = Partial<Record<'info' | 'warn' | 'error', LogMethod>>
+
+/** Emit a structured, redacted lifecycle event when the host exposes logging. */
+export function logRunnerEvent(ctx: Context, event: RunnerEvent, fields: Record<string, unknown>, level: 'info' | 'warn' | 'error' = 'info'): void {
+  const service = (ctx as unknown as { logger?: unknown }).logger
+  const logger = typeof service === 'function' ? service('kb-daily') as LoggerLike : service as LoggerLike | undefined
+  const method = logger?.[level]
+  if (typeof method === 'function') {
+    try { method(event, fields) } catch { /* logging must not break the runner */ }
+  }
+}
+
+function errorCategory(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string') return error.code
+  if (error instanceof Error && error.name) return error.name
+  return 'unknown'
+}
+
+function notifyHost(ctx: Context, event: 'kb-daily.created' | 'kb-daily.failed', fields: Record<string, unknown>): void {
+  const notification = (ctx as unknown as { notification?: unknown }).notification
+  if (typeof notification !== 'object' || notification === null || !('send' in notification) || typeof notification.send !== 'function') return
+  try {
+    void (notification.send as (payload: unknown) => unknown)({ event, ...fields })
+  } catch { /* optional notifications must not break the runner */ }
+}
+
 export async function runDailyCheck(ctx: Context, config: RunnerConfig, taskText: (date: string) => string, options: RunOptions = {}): Promise<CheckOutcome> {
   const date = options.date ?? dateKey(options.now ?? new Date(), config.timeZone)
   if (await reportExists(config.vaultPath, config.reportDir, reportFileName(date))) return 'already-done'
@@ -102,15 +130,19 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
     const startingStatus = { ...currentStatus, date: targetDate, state: 'running' as const, lastAttemptAt: new Date().toISOString() }
     delete startingStatus.lastError
     currentStatus = startingStatus
+    const startedAt = Date.now()
+    logRunnerEvent(ctx, 'kb-daily.started', { date: targetDate, fileCount: null, status: 'running' })
     inFlight = (async () => {
       const destination = resolveReportPath(config.vaultPath, config.reportDir, reportFileName(targetDate))
       if (!force && attemptedDay === targetDate) {
         currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination }
+        logRunnerEvent(ctx, 'kb-daily.skipped', { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: 'already-done' })
         return 'already-done'
       }
       if (await reportExists(config.vaultPath, config.reportDir, reportFileName(targetDate))) {
         attemptedDay = targetDate
         currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination }
+        logRunnerEvent(ctx, 'kb-daily.skipped', { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: 'already-done' })
         return 'already-done'
       }
       attemptedDay = targetDate
@@ -119,9 +151,14 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
         trackHandle: handle => handles.add(handle),
       })
       currentStatus = { ...currentStatus, state: 'succeeded', reportPath: destination }
+      logRunnerEvent(ctx, 'kb-daily.created', { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: outcome })
+      notifyHost(ctx, 'kb-daily.created', { date: targetDate, status: outcome })
       return outcome
     })().catch(error => {
       currentStatus = { ...currentStatus, state: 'failed', lastError: error instanceof Error ? error.message : String(error) }
+      const fields = { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: 'failed', errorCategory: errorCategory(error) }
+      logRunnerEvent(ctx, 'kb-daily.failed', fields, 'error')
+      notifyHost(ctx, 'kb-daily.failed', fields)
       throw error
     }).finally(() => { inFlight = undefined })
     return inFlight

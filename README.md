@@ -74,6 +74,8 @@ The plugin registers three model tools:
 
 Reports use stable YAML frontmatter (`date`, `timezone`, `source_count`, `generated_by`), followed by `今日概览` and `变更文件` sections. File entries use vault-relative paths only; no-change and budget-truncated scans are stated explicitly.
 
+The runner emits `kb-daily.started`, `kb-daily.skipped`, `kb-daily.created`, `kb-daily.failed`, and `kb-daily.approval-required` events when the host logger is available. Events contain only operational metadata; notifications are optional and require a host `notification.send` adapter.
+
 `writePolicy: ask` returns the standard DSH `tools/pre-execute` ask decision. The host approval mechanism decides whether the write continues; if no approval channel is installed, the standard pipeline fails closed. The plugin does not write source notes or bypass host tool policy.
 
 All prompt sections, tools, approval listeners, timers, and agent handles are owned by the plugin's Cordis effects. Unloading the plugin removes them and disposes agents created by the runner. Reloading the plugin starts a fresh lifecycle with the same configured session id.
