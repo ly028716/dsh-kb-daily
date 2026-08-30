@@ -13,7 +13,7 @@
 | 已验证的 DSH CLI / bundle loader | `0.1.0-rc.8` |
 | Node.js | `25.2.1` |
 | pnpm | `11.7.0` |
-| 验证命令 | `pnpm run verify` |
+| 核心验证命令 | `pnpm run verify:core` |
 
 ## 安装
 
@@ -113,7 +113,10 @@ pnpm run test
 pnpm run build
 pnpm run pack:inspect
 pnpm run smoke:dsh
+pnpm run verify:core
 pnpm run verify
 ```
+
+`verify:core` 是 CI 的阻塞门禁。`verify` 还会执行真实 DSH profile smoke test；在调查 DSH `0.1.0-rc.8` profile 初始化问题期间，GitHub Actions 中的 smoke 仅支持手动触发且不会阻塞主检查。
 
 本包只使用已发布的 DeepSeek Harness 与 Cordis 公共 API。peer dependency 会镜像到开发依赖以支持本地类型检查和测试，不需要任何 `workspace:` 依赖。

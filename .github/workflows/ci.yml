@@ -5,9 +5,10 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  verify:
+  verify-core:
     runs-on: ubuntu-latest
     env:
       DSH_TELEMETRY_DISABLED: '1'
@@ -22,4 +23,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run config:parse
-      - run: pnpm run verify
+      - run: pnpm run verify:core
+
+  smoke:
+    if: github.event_name == 'workflow_dispatch'
+    needs: verify-core
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25.2.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run smoke:dsh

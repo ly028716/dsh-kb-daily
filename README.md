@@ -13,7 +13,7 @@ Standalone DeepSeek Harness/Cordis community bundle that scans a Markdown knowle
 | Verified DSH CLI / bundle loader | `0.1.0-rc.8` |
 | Node.js | `25.2.1` |
 | pnpm | `11.7.0` |
-| Verification command | `pnpm run verify` |
+| Core verification command | `pnpm run verify:core` |
 
 ## Installation
 
@@ -113,7 +113,10 @@ pnpm run test
 pnpm run build
 pnpm run pack:inspect
 pnpm run smoke:dsh
+pnpm run verify:core
 pnpm run verify
 ```
+
+`verify:core` is the blocking CI gate. `verify` additionally runs the real DSH profile smoke test; that smoke test is available as a manual GitHub Actions dispatch and is currently non-blocking while the DSH `0.1.0-rc.8` profile initialization issue is investigated.
 
 The package uses published DeepSeek Harness and Cordis APIs only. Its peer dependencies are mirrored as development dependencies for local typechecking and tests; no `workspace:` dependency is required.

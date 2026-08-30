@@ -124,6 +124,7 @@ describe('packed artifact contract', () => {
         test: 'vitest run --exclude tests/packed-exports.spec.ts',
         'pack:inspect': 'vitest run tests/packed-exports.spec.ts',
         'smoke:dsh': 'node scripts/smoke-dsh.mjs',
+        'verify:core': 'pnpm run typecheck && pnpm run test && pnpm run build && pnpm run pack:inspect',
         verify: 'pnpm run typecheck && pnpm run test && pnpm run build && pnpm run pack:inspect && pnpm run smoke:dsh',
       })
       expect(packed.packageJson.devDependencies?.['@deepseek-ai/dsh']).toBeDefined()
