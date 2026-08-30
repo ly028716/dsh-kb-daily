@@ -5,6 +5,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { dateKey, dateStartMs, reportFileName } from './date.ts'
 import { boundModifiedFiles, listModifiedFiles, readVaultFile, vaultRelative, writeReport, type ModifiedFilesBudget } from './fs.ts'
+import { DiffError, readGitDiff } from './git.ts'
 import { resolveReportPath } from './paths.ts'
 
 export interface ToolsConfig {
@@ -64,6 +65,15 @@ const WRITE_SCHEMA = {
   },
 } as const
 
+const DIFF_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    diff: { type: 'string', required: true },
+    truncated: { type: 'boolean', required: true, const: false },
+  },
+} as const
+
 const REPORT_EXISTS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -120,6 +130,24 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
           return await readVaultFile(config.vaultPath, args.path)
         } catch (error) {
           return failure('read_failed', error)
+        }
+      },
+    })))
+
+    disposers.push(ctx.tools.register(defineTool({
+      name: 'kb_read_diff',
+      description: 'Read an optional bounded Git diff for a vault-relative Markdown file.',
+      parameters: {
+        path: { type: 'string', required: true, description: 'Vault-relative Markdown path.' },
+        since: { type: 'string', description: 'Git revision to diff from; defaults to HEAD.' },
+      },
+      output: { schema: { oneOf: [DIFF_SCHEMA, ERROR_SCHEMA] }, render: renderValue },
+      async execute(args) {
+        try {
+          return await readGitDiff(config.vaultPath, args.path, args.since)
+        } catch (error) {
+          if (error instanceof DiffError) return failure(error.code, error)
+          return failure('git_unavailable', error)
         }
       },
     })))

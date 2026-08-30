@@ -18,6 +18,7 @@ export function sectionText(config: SectionConfig): string {
     'Produce today\'s daily digest on request:',
     '1. Call kb_list_modified to find notes changed today (vault-local date).',
     '2. Read the changed notes with kb_read (vault-relative paths only).',
+    'If kb_read_diff is available and returns a usable diff, use it as optional change context; Git is not required and git_unavailable is non-fatal.',
     `3. Write a concise Chinese Markdown report with kb_write_report; it lands in ${config.reportDir}/YYYY-MM-DD.md.`,
     'At the very beginning of the report, state the scan scope, the number of files returned, and whether the scan was truncated by a budget.',
     'Use this stable Markdown structure: YAML frontmatter with date, timezone, source_count, and generated_by: dsh-kb-daily; then a report title, 今日概览, and 变更文件 sections.',

@@ -17,6 +17,8 @@ describe('kb-daily prompt content', () => {
     expect(text).toContain('今日概览')
     expect(text).toContain('变更文件')
     expect(text).toContain('vault-relative paths')
+    expect(text).toContain('kb_read_diff')
+    expect(text).toContain('git_unavailable')
   })
   it('task framing carries the target date', () => {
     const framing = taskFraming('2026-08-17')

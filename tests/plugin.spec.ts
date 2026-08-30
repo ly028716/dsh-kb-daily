@@ -41,7 +41,7 @@ describe('kb-daily plugin export shape', () => {
       } as never
 
       kbDaily.apply(ctx, { vaultPath: root, timeZone: 'UTC', agentId: 'kb-test', writePolicy: 'ask', checkIntervalMs: 1000 })
-      expect([...tools.keys()]).toEqual(['kb_list_modified', 'kb_read', 'kb_write_report'])
+      expect([...tools.keys()]).toEqual(['kb_list_modified', 'kb_read', 'kb_read_diff', 'kb_write_report'])
       expect(sections.has('kb-daily:task')).toBe(true)
       expect(listeners.has('tools/pre-execute')).toBe(true)
       await lifecycle()

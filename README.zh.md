@@ -69,6 +69,7 @@ dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
 - `kb_list_modified` 递归扫描 `vaultPath` 下的 Markdown 文件，跳过隐藏/维护目录，并以配置时区的本地午夜作为 cutoff。
 - `kb_list_modified` 按稳定路径顺序返回文件，并附带 `truncated` 与 `totalBytes`。如果预算排除了文件，结果是不完整摘要；Agent 必须明确披露，不能让用户误认为覆盖了整个 vault。
 - `kb_read` 读取 vault-relative 路径，最多返回 64 KiB 且不会截断 UTF-8 字符。越出 vault 的词法路径会被拒绝。
+- `kb_read_diff` 是可选的 Git 增强，限制为 128 KiB；非 Git vault、无历史、二进制文件和超限 diff 都返回稳定的非致命错误。
 - `kb_write_report` 根据当前配置时区的本地日期计算目标路径，不接受模型提供的输出路径。写入采用独占创建，因此不会覆盖已有日报。
 
 日报采用稳定的 YAML frontmatter（`date`、`timezone`、`source_count`、`generated_by`），随后是“今日概览”和“变更文件”章节。文件条目只使用 vault-relative 路径；无变更和预算截断都必须明确说明。

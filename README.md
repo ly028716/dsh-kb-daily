@@ -69,6 +69,7 @@ The plugin registers three model tools:
 - `kb_list_modified` recursively scans Markdown files below `vaultPath`, skips hidden/bookkeeping directories, and uses the configured timezone's local midnight as the cutoff.
 - `kb_list_modified` returns stable path order plus `truncated` and `totalBytes` metadata. When any scan budget excludes files, the result is an incomplete summary; the agent must disclose that rather than presenting it as full-vault coverage.
 - `kb_read` reads a vault-relative file with a UTF-8-safe 64 KiB cap. Lexical paths that escape the vault are rejected.
+- `kb_read_diff` is an optional Git enhancement with a 128 KiB cap; non-Git vaults, missing history, binary files, and oversized diffs return stable non-fatal errors.
 - `kb_write_report` derives the destination from the current configured local date and never accepts a model-supplied output path. It uses exclusive file creation, so an existing report is never overwritten.
 
 Reports use stable YAML frontmatter (`date`, `timezone`, `source_count`, `generated_by`), followed by `今日概览` and `变更文件` sections. File entries use vault-relative paths only; no-change and budget-truncated scans are stated explicitly.
