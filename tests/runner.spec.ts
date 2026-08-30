@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { createGuard, runDailyCheck, startRunner } from '../src/runner.ts'
+import { createGuard, createRunner, runDailyCheck, startRunner } from '../src/runner.ts'
 
 describe('kb-daily runner', () => {
   it('prevents duplicate same-day work and concurrent runs', async () => {
@@ -42,6 +42,55 @@ describe('kb-daily runner', () => {
     expect(agents.resume).toHaveBeenCalledOnce()
     expect(agents.create).toHaveBeenCalledOnce()
     expect(followup).toHaveBeenCalledOnce()
+  })
+
+  it('exposes status, explicit retry, and report protection through RunnerControl', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-control-'))
+    try {
+      const handles = [
+        { agent: { followup: vi.fn() }, dispose: vi.fn(async () => undefined) },
+        { agent: { followup: vi.fn() }, dispose: vi.fn(async () => undefined) },
+      ]
+      const agents = {
+        get: vi.fn(() => undefined),
+        resume: vi.fn(async () => { throw new Error('no persistence') }),
+        create: vi.fn(async () => handles.shift()!),
+      }
+      const ctx = { agents, interval: vi.fn(() => vi.fn()) } as never
+      const runner = createRunner(ctx, {
+        vaultPath: root, reportDir: 'Daily', timeZone: 'UTC', agentId: 'kb-daily', checkIntervalMs: 1000,
+      }, date => `run ${date}`)
+      await vi.waitFor(() => expect(agents.create).toHaveBeenCalledOnce())
+      expect(runner.control.status().state).toBe('succeeded')
+      expect(await runner.control.runNow()).toBe('already-done')
+      expect(await runner.control.retry('2026-08-24')).toBe('ran')
+      expect(runner.control.status()).toMatchObject({ date: '2026-08-24', state: 'succeeded', reportPath: join(root, 'Daily', '2026-08-24.md') })
+      await runner.stop()
+      expect(runner.control.status().state).toBe('stopped')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not turn fatal resume errors into fresh agent creation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-failure-'))
+    try {
+      const agents = {
+        get: vi.fn(() => undefined),
+        resume: vi.fn(async () => { throw new Error('provider is unavailable') }),
+        create: vi.fn(async () => ({ agent: { followup: vi.fn() }, dispose: vi.fn() })),
+      }
+      const ctx = { agents, interval: vi.fn(() => vi.fn()) } as never
+      const runner = createRunner(ctx, {
+        vaultPath: root, reportDir: 'Daily', timeZone: 'UTC', agentId: 'kb-daily', checkIntervalMs: 1000,
+      }, () => 'run')
+      await vi.waitFor(() => expect(runner.control.status().state).toBe('failed'))
+      expect(agents.create).not.toHaveBeenCalled()
+      expect(runner.control.status().lastError).toContain('provider is unavailable')
+      await runner.stop()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('disposes created agent handles when a runner is stopped and restarted', async () => {

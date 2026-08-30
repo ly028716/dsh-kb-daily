@@ -5,6 +5,8 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { dateKey, reportFileName } from './date.ts'
 import { reportExists } from './fs.ts'
+import { resolveReportPath } from './paths.ts'
+import type { RunnerControl, RunnerStatus } from './status.ts'
 
 export interface RunnerConfig {
   vaultPath: string
@@ -18,13 +20,14 @@ export interface RunnerConfig {
 
 export interface RunOptions {
   now?: Date
+  date?: string
   trackHandle?: (handle: AgentHandle) => void
 }
 
 export type CheckOutcome = 'ran' | 'already-done'
 
 export async function runDailyCheck(ctx: Context, config: RunnerConfig, taskText: (date: string) => string, options: RunOptions = {}): Promise<CheckOutcome> {
-  const date = dateKey(options.now ?? new Date(), config.timeZone)
+  const date = options.date ?? dateKey(options.now ?? new Date(), config.timeZone)
   if (await reportExists(config.vaultPath, config.reportDir, reportFileName(date))) return 'already-done'
   const id = SessionId(config.agentId)
   const agentOptions = {
@@ -37,7 +40,12 @@ export async function runDailyCheck(ctx: Context, config: RunnerConfig, taskText
     let handle: AgentHandle
     try {
       handle = await ctx.agents.resume({ resumeSessionId: id, agentOptions })
-    } catch {
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      const message = error instanceof Error ? error.message : String(error)
+      const resumable = code === 'ENOENT' || code === 'ENOTDIR' || code === 'SESSION_NOT_FOUND' ||
+        code === 'PERSISTENCE_UNAVAILABLE' || /no persistence|session does not exist|not found|persistence unavailable/i.test(message)
+      if (!resumable) throw error
       handle = await ctx.agents.create({ sessionId: id, agentOptions })
     }
     options.trackHandle?.(handle)
@@ -76,29 +84,85 @@ export function createGuard(deps: GuardDeps): () => Promise<void> {
   }
 }
 
-/** Start the immediate and interval-based catch-up checks. */
-export function startRunner(ctx: Context, config: RunnerConfig, taskText: (date: string) => string): () => Promise<void> {
+/** Create explicit controls plus lifecycle cleanup for the daily runner. */
+export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date: string) => string): { control: RunnerControl; stop: () => Promise<void> } {
   const handles = new Set<AgentHandle>()
   const activeRuns = new Set<Promise<void>>()
-  const guard = createGuard({
-    now: () => new Date(),
-    timeZone: config.timeZone,
-    reportExists: async date => reportExists(config.vaultPath, config.reportDir, reportFileName(date)),
-    run: async () => { await runDailyCheck(ctx, config, taskText, { trackHandle: handle => handles.add(handle) }) },
-  })
-  const invoke = () => {
-    const run = guard().catch(() => undefined)
-    activeRuns.add(run)
-    void run.then(() => activeRuns.delete(run), () => activeRuns.delete(run))
+  let inFlight: Promise<CheckOutcome> | undefined
+  let attemptedDay: string | undefined
+  let stopped = false
+  let currentStatus: RunnerStatus = {
+    date: dateKey(new Date(), config.timeZone),
+    state: 'idle',
   }
+
+  const run = async (targetDate: string, force: boolean): Promise<CheckOutcome> => {
+    if (stopped) throw new Error('kb-daily runner is stopped')
+    if (inFlight !== undefined) return inFlight
+    const startingStatus = { ...currentStatus, date: targetDate, state: 'running' as const, lastAttemptAt: new Date().toISOString() }
+    delete startingStatus.lastError
+    currentStatus = startingStatus
+    inFlight = (async () => {
+      const destination = resolveReportPath(config.vaultPath, config.reportDir, reportFileName(targetDate))
+      if (!force && attemptedDay === targetDate) {
+        currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination }
+        return 'already-done'
+      }
+      if (await reportExists(config.vaultPath, config.reportDir, reportFileName(targetDate))) {
+        attemptedDay = targetDate
+        currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination }
+        return 'already-done'
+      }
+      attemptedDay = targetDate
+      const outcome = await runDailyCheck(ctx, config, taskText, {
+        date: targetDate,
+        trackHandle: handle => handles.add(handle),
+      })
+      currentStatus = { ...currentStatus, state: 'succeeded', reportPath: destination }
+      return outcome
+    })().catch(error => {
+      currentStatus = { ...currentStatus, state: 'failed', lastError: error instanceof Error ? error.message : String(error) }
+      throw error
+    }).finally(() => { inFlight = undefined })
+    return inFlight
+  }
+
+  const runNow = (): Promise<CheckOutcome> => {
+    const targetDate = dateKey(new Date(), config.timeZone)
+    const promise = run(targetDate, false)
+    const tracked = promise.then(() => undefined, () => undefined)
+    activeRuns.add(tracked)
+    void tracked.then(() => activeRuns.delete(tracked))
+    return promise
+  }
+  const retry = (date?: string): Promise<CheckOutcome> => {
+    const targetDate = date ?? dateKey(new Date(), config.timeZone)
+    const promise = run(targetDate, true)
+    const tracked = promise.then(() => undefined, () => undefined)
+    activeRuns.add(tracked)
+    void tracked.then(() => activeRuns.delete(tracked))
+    return promise
+  }
+  const control: RunnerControl = {
+    runNow,
+    retry,
+    status: () => ({ ...currentStatus }),
+  }
+  const invoke = () => { void runNow().catch(() => undefined) }
   invoke()
   const stopTimer = ctx.interval(invoke, config.checkIntervalMs)
-  let stopped = false
-  return async () => {
+  const stop = async () => {
     if (stopped) return
     stopped = true
     stopTimer()
     await Promise.allSettled([...activeRuns])
     await Promise.allSettled([...handles].map(handle => handle.dispose()))
+    currentStatus = { ...currentStatus, state: 'stopped' }
   }
+  return { control, stop }
+}
+
+/** Start the immediate and interval-based catch-up checks. */
+export function startRunner(ctx: Context, config: RunnerConfig, taskText: (date: string) => string): () => Promise<void> {
+  return createRunner(ctx, config, taskText).stop
 }
