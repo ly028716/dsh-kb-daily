@@ -11,9 +11,9 @@ export interface DiffResult {
 }
 
 export class DiffError extends Error {
-  readonly code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable'
+  readonly code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable' | 'invalid_revision'
 
-  constructor(code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable', message: string) {
+  constructor(code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable' | 'invalid_revision', message: string) {
     super(message)
     this.code = code
     this.name = 'DiffError'
@@ -63,6 +63,10 @@ async function runGitDiff(args: string[]): Promise<Buffer> {
 
 /** Read an optional bounded working-tree diff for one vault-relative Markdown file. */
 export async function readGitDiff(vaultPath: string, relPath: string, since?: string): Promise<DiffResult> {
+  const revision = since ?? 'HEAD'
+  if (revision.startsWith('-')) {
+    throw new DiffError('invalid_revision', `Git revision must not start with a dash: ${revision}`)
+  }
   const absolutePath = assertContained(vaultPath, relPath)
   await assertNoSymlinkSegments(vaultPath, absolutePath)
   let content: Buffer
@@ -74,7 +78,7 @@ export async function readGitDiff(vaultPath: string, relPath: string, since?: st
   if (content.includes(0)) throw new DiffError('binary_file', `binary files are not supported: ${relPath}`)
   if (content.byteLength > MAX_DIFF_BYTES) throw new DiffError('diff_too_large', `diff exceeds maximum size of ${MAX_DIFF_BYTES} bytes`)
 
-  const args = ['-C', resolve(vaultPath), 'diff', '--no-ext-diff', '--unified=3', ...(since === undefined ? ['HEAD'] : [since]), '--', relPath]
+  const args = ['-C', resolve(vaultPath), 'diff', '--no-ext-diff', '--unified=3', '--end-of-options', revision, '--', relPath]
   let stdout: Buffer
   try {
     stdout = await runGitDiff(args)

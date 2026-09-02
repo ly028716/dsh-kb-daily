@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -65,6 +65,20 @@ describe('optional Git diff', () => {
       await git(root, 'commit', '--quiet', '-m', 'large base')
       await writeFile(join(root, 'large.md'), 'x'.repeat(MAX_DIFF_BYTES + 1024))
       await expect(readGitDiff(root, 'large.md')).rejects.toMatchObject({ code: 'diff_too_large' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects option-like revisions without letting Git create an output file', async () => {
+    const root = await gitFixture()
+    const injectedOutput = join(root, 'injected-output.patch')
+    try {
+      await writeFile(join(root, 'note.md'), '# changed\n')
+
+      await expect(readGitDiff(root, 'note.md', `--output=${injectedOutput}`))
+        .rejects.toMatchObject({ code: 'invalid_revision' })
+      await expect(stat(injectedOutput)).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
       await rm(root, { recursive: true, force: true })
     }
