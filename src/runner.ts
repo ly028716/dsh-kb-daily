@@ -75,7 +75,7 @@ export async function runDailyCheck(ctx: Context, config: RunnerConfig, taskText
       const code = (error as NodeJS.ErrnoException).code
       const message = error instanceof Error ? error.message : String(error)
       const resumable = code === 'ENOENT' || code === 'ENOTDIR' || code === 'SESSION_NOT_FOUND' ||
-        code === 'PERSISTENCE_UNAVAILABLE' || /no persistence|session does not exist|not found|persistence unavailable/i.test(message)
+        code === 'PERSISTENCE_UNAVAILABLE' || /no persistence|session persistence is not configured|session does not exist|not found|persistence unavailable/i.test(message)
       if (!resumable) throw error
       handle = await ctx.agents.create({ sessionId: id, agentOptions })
     }

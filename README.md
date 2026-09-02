@@ -44,6 +44,35 @@ The package ships `cordis.patch.yml` through `dsh.bundle.patch`, so `dsh plugin 
     checkIntervalMs: 3600000
 ```
 
+### Safe installation and least-privilege configuration
+
+For a first run, use an isolated profile and pin the source you reviewed:
+
+```sh
+# A reviewed npm version; do not silently follow latest in a production profile.
+dsh plugin --profile daily add @ly028716/dsh-kb-daily@<reviewed-version>
+
+# Or an immutable Git commit, never a floating branch name.
+dsh plugin --profile daily add github:ly028716/dsh-kb-daily#<full-commit-sha>
+```
+
+A Git install runs the package build script. Only after reviewing the repository, commit, and `package.json`, allow that build in the profile's `pnpm-workspace.yaml`:
+
+```yaml
+allowBuilds:
+  '@ly028716/dsh-kb-daily': true
+```
+
+Place configuration in `$DSH_HOME/profiles/daily/cordis.patch.yml` and keep these boundaries:
+
+- `vaultPath` must be an absolute path to an explicitly authorized vault. The plugin rejects symbolic links and junctions as the vault root.
+- Keep `reportDir` inside the vault. Reads, Git diffs, and report writes reject path traversal and existing symbolic-link segments.
+- Start with `writePolicy: ask`. It sends `kb_write_report` through host approval and fails closed when no approval channel exists. Consider `allow` only after a reviewed trial run.
+- Never put API keys, access tokens, personal absolute paths, or real note content in a patch file, terminal capture, issue, or log. The model receives any note content read by the tools; authorize only a vault that may be sent to the selected provider.
+- Run DSH with only the vault read access and `reportDir` create/write access it needs. Do not scan a whole disk or home directory as an administrator.
+
+Use the [sanitized walkthrough](docs/kb-daily-sanitized-demo.md) with a synthetic vault to verify approval and same-day no-overwrite behavior before connecting a real vault.
+
 ### Multiple vaults (explicit opt-in)
 
 Use `vaults` when one profile owns more than one independent knowledge base. Each entry requires a stable `id` and an explicit `agentId`; the plugin creates isolated tools named `kb_<id>_list_modified`, `kb_<id>_read`, `kb_<id>_read_diff`, and `kb_<id>_write_report`.

@@ -44,6 +44,35 @@ dsh plugin --profile <profile> add github:ly028716/dsh-kb-daily#<commit-or-tag>
     checkIntervalMs: 3600000
 ```
 
+### 安全安装与最小权限配置
+
+首次启用时，建议在隔离的 profile 中安装，并固定来源：
+
+```sh
+# 已审查的 npm 版本；不要在生产 profile 中无提示地跟随 latest。
+dsh plugin --profile daily add @ly028716/dsh-kb-daily@<reviewed-version>
+
+# 或固定到已审查的 Git commit（不要使用浮动分支名）。
+dsh plugin --profile daily add github:ly028716/dsh-kb-daily#<full-commit-sha>
+```
+
+Git 安装会执行包的构建脚本。仅在核对仓库、commit 和 `package.json` 后，才在该 profile 使用的 `pnpm-workspace.yaml` 中批准构建：
+
+```yaml
+allowBuilds:
+  '@ly028716/dsh-kb-daily': true
+```
+
+将配置写入 `$DSH_HOME/profiles/daily/cordis.patch.yml`，并遵循以下边界：
+
+- `vaultPath` 必须是指向已授权知识库的绝对路径；插件拒绝把符号链接或 junction 作为 vault 根目录。
+- 保持 `reportDir` 为 vault 内的子目录。读取、Git diff 和报告写入都会拒绝路径穿越与已存在的符号链接段。
+- 先使用 `writePolicy: ask`。它会把 `kb_write_report` 交给宿主审批；没有审批通道时会拒绝写入。只有完成试运行并确认审批范围后，才考虑 `allow`。
+- 不要把 API Key、访问令牌、个人绝对路径或真实笔记内容写入 patch、终端截图、Issue 或日志。模型会收到被读取笔记的内容，请只授权可发送给所选 provider 的 vault。
+- 运行插件的账户应只拥有该 vault 所需的读取权限，以及 `reportDir` 的创建/写入权限；不要以管理员账户扫描整块磁盘或主目录。
+
+可先按 [脱敏演示](docs/kb-daily-sanitized-demo.md) 使用合成 vault 验证审批与“同日报告不覆盖”行为，再接入真实知识库。
+
 ### 多 Vault（显式启用）
 
 当一个 profile 需要管理多个相互独立的知识库时，使用 `vaults` 数组。每个条目必须提供稳定的 `id` 和明确的 `agentId`；插件会注册独立工具：`kb_<id>_list_modified`、`kb_<id>_read`、`kb_<id>_read_diff`、`kb_<id>_write_report`。

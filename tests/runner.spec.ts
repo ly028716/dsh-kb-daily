@@ -25,11 +25,11 @@ describe('kb-daily runner', () => {
     expect(run).toHaveBeenCalledTimes(1)
   })
 
-  it('resumes a persisted agent and falls back to create', async () => {
+  it('falls back to create when session persistence is not configured', async () => {
     const followup = vi.fn()
     const agents = {
       get: vi.fn(() => undefined),
-      resume: vi.fn(async () => { throw new Error('no persistence') }),
+      resume: vi.fn(async () => { throw new Error('cannot resume: session persistence is not configured (load a dsh-session-persistence backend)') }),
       create: vi.fn(async () => ({ agent: { followup }, dispose: vi.fn() })),
     }
     const ctx = { agents } as never
