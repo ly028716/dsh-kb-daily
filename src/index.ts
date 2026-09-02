@@ -8,13 +8,16 @@ import z from '@deepseek-ai/schemastery'
 import { accessSync, constants, lstatSync, statSync } from 'node:fs'
 import { registerWriteApproval } from './approval.ts'
 import { sectionName, sectionText, taskFraming } from './prompt.ts'
-import { startRunner } from './runner.ts'
+import { createRunner } from './runner.ts'
+import { runnerServiceName, type RunnerControl, type RunnerState, type RunnerStatus, RUNNER_SERVICE } from './status.ts'
 import { registerTools, toolNames, type ToolNames } from './tools.ts'
 import { assertContained } from './paths.ts'
 import { isAbsolute, relative, resolve } from 'node:path'
 
 /** Cordis function-plugin name. */
 export const name = 'kb-daily'
+export { RUNNER_SERVICE, runnerServiceName }
+export type { RunnerControl, RunnerState, RunnerStatus }
 /** Services required before the plugin can run. */
 export const inject = ['agents', 'tools', 'systemPrompt', 'timer']
 
@@ -210,7 +213,7 @@ export function apply(ctx: Context, config: Config): void {
           ...(vault.maxFileBytes === undefined ? {} : { maxFileBytes: vault.maxFileBytes }),
         }))
         disposers.push(registerWriteApproval(ctx, { writePolicy: vault.writePolicy, reportDir: vault.reportDir, writeToolName: names.writeReport }))
-        disposers.push(startRunner(ctx, {
+        const runner = createRunner(ctx, {
           vaultPath: vault.vaultPath,
           reportDir: vault.reportDir,
           timeZone: vault.timeZone,
@@ -218,7 +221,9 @@ export function apply(ctx: Context, config: Config): void {
           checkIntervalMs: vault.checkIntervalMs,
           ...(vault.provider === undefined ? {} : { provider: vault.provider }),
           ...(vault.model === undefined ? {} : { model: vault.model }),
-        }, taskFraming))
+        }, taskFraming)
+        disposers.push(runner.stop)
+        disposers.push(ctx.provide(runnerServiceName(vault.id), runner.control))
       }
     } catch (error) {
       for (const dispose of disposers.reverse()) void dispose()

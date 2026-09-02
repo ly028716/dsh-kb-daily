@@ -1,5 +1,10 @@
 import { lstat } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+
+/** Whether a resolved vault path targets a Markdown file. */
+export function isMarkdownPath(absolutePath: string): boolean {
+  return extname(absolutePath).toLowerCase() === '.md'
+}
 
 /**
  * Absolute report path: vault/reportDir/fileName. Callers must ensure reportDir and fileName are trusted or already validated.

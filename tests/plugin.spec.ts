@@ -26,6 +26,7 @@ describe('kb-daily plugin export shape', () => {
       const tools = new Map<string, unknown>()
       const sections = new Map<string, unknown>()
       const listeners = new Map<string, unknown>()
+      const services = new Map<string, unknown>()
       let timerDisposed = false
       let lifecycle!: () => Promise<void>
       const ctx = {
@@ -36,6 +37,7 @@ describe('kb-daily plugin export shape', () => {
         tools: { register(definition: { name: string }) { tools.set(definition.name, definition); return () => tools.delete(definition.name) } },
         systemPrompt: { section(section: { name: string }) { sections.set(section.name, section); return () => sections.delete(section.name) } },
         on(name: string, listener: unknown) { listeners.set(name, listener); return () => listeners.delete(name) },
+        provide(name: string, value: unknown) { services.set(name, value); return () => services.delete(name) },
         interval(_callback: () => void, _delay: number) { return () => { timerDisposed = true } },
         agents: { get: () => undefined, resume: async () => { throw new Error('not used') }, create: async () => { throw new Error('not used') } },
       } as never
@@ -44,10 +46,16 @@ describe('kb-daily plugin export shape', () => {
       expect([...tools.keys()]).toEqual(['kb_list_modified', 'kb_read', 'kb_read_diff', 'kb_write_report'])
       expect(sections.has('kb-daily:task')).toBe(true)
       expect(listeners.has('tools/pre-execute')).toBe(true)
+      expect(services.get('kbDailyRunner')).toMatchObject({
+        runNow: expect.any(Function),
+        retry: expect.any(Function),
+        status: expect.any(Function),
+      })
       await lifecycle()
       expect(tools.size).toBe(0)
       expect(sections.size).toBe(0)
       expect(listeners.size).toBe(0)
+      expect(services.size).toBe(0)
       expect(timerDisposed).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -108,11 +116,13 @@ describe('kb-daily plugin export shape', () => {
       await writeFile(join(second, 'Journal', reportFileName(today)), '# existing')
       const tools = new Map<string, unknown>()
       const sections = new Map<string, unknown>()
+      const services = new Map<string, unknown>()
       const ctx = {
         effect(body: () => () => Promise<void>) { body(); return vi.fn() },
         tools: { register(definition: { name: string }) { tools.set(definition.name, definition); return () => tools.delete(definition.name) } },
         systemPrompt: { section(section: { name: string }) { sections.set(section.name, section); return () => sections.delete(section.name) } },
         on: vi.fn(() => vi.fn()),
+        provide(name: string, value: unknown) { services.set(name, value); return () => services.delete(name) },
         interval: vi.fn(() => vi.fn()),
         agents: { get: () => undefined, resume: async () => { throw new Error('not used') }, create: async () => { throw new Error('not used') } },
       } as never
@@ -134,6 +144,7 @@ describe('kb-daily plugin export shape', () => {
         'kb_personal_list_modified', 'kb_personal_read', 'kb_personal_read_diff', 'kb_personal_write_report',
       ])
       expect([...sections.keys()]).toEqual(['kb-daily:work:task', 'kb-daily:personal:task'])
+      expect([...services.keys()]).toEqual(['kbDailyRunner:work', 'kbDailyRunner:personal'])
       expect((sections.get('kb-daily:work:task') as { text: string }).text).toContain('kb_work_list_modified')
       expect((sections.get('kb-daily:personal:task') as { text: string }).text).toContain('kb_personal_write_report')
     } finally {

@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { assertContained, assertNoSymlinkSegments } from './paths.ts'
+import { assertContained, assertNoSymlinkSegments, isMarkdownPath } from './paths.ts'
 
 /** One .md file found by a vault scan. */
 export interface ModifiedFile {
@@ -8,6 +8,8 @@ export interface ModifiedFile {
   path: string
   /** Byte size. */
   size: number
+  /** Last modification time in Unix milliseconds. */
+  mtime: number
 }
 
 /** Explicit scan budgets applied after the deterministic vault walk. */
@@ -45,24 +47,30 @@ export function vaultRelative(vaultPath: string, abs: string): string {
  * Recursively list .md files under the vault with mtime >= sinceMs.
  * @param vaultPath - absolute path to the vault root.
  * @param sinceMs - cutoff; only files whose mtime is at or after this are listed.
- * @returns vault-relative .md file paths, sorted by path, with byte sizes.
+ * @param reportDir - optional vault-relative report directory to exclude from the scan.
+ * @returns vault-relative .md file paths, sorted by path, with byte sizes and modification times.
  */
-export async function listModifiedFiles(vaultPath: string, sinceMs: number): Promise<ModifiedFile[]> {
+export async function listModifiedFiles(vaultPath: string, sinceMs: number, reportDir?: string): Promise<ModifiedFile[]> {
   const root = resolve(vaultPath)
   await assertNoSymlinkSegments(root, root)
+  const reportRoot = reportDir === undefined ? undefined : assertContained(root, reportDir)
+  const samePath = (left: string, right: string): boolean => process.platform === 'win32'
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right
   const found: ModifiedFile[] = []
   async function walk(dir: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith('.') && !SKIP_DIRECTORIES.has(entry.name)) {
+        const abs = join(dir, entry.name)
+        if (!entry.name.startsWith('.') && !SKIP_DIRECTORIES.has(entry.name) && !(reportRoot !== undefined && samePath(abs, reportRoot))) {
           await walk(join(dir, entry.name))
         }
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
         const abs = join(dir, entry.name)
         const info = await stat(abs)
         if (info.mtimeMs >= sinceMs) {
-          found.push({ path: vaultRelative(root, abs), size: info.size })
+          found.push({ path: vaultRelative(root, abs), size: info.size, mtime: info.mtimeMs })
         }
       }
     }
@@ -141,6 +149,9 @@ export async function readVaultFile(
   maxBytes = 64 * 1024,
 ): Promise<{ content: string; truncated: boolean }> {
   const abs = assertContained(vaultPath, relPath)
+  if (!isMarkdownPath(abs)) {
+    throw new Error(`only Markdown files are supported: ${relPath}`)
+  }
   await assertNoSymlinkSegments(vaultPath, abs)
   const buffer = await readFile(abs)
   const slice = buffer.subarray(0, maxBytes)

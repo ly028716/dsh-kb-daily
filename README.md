@@ -117,8 +117,8 @@ On load and on each interval, the plugin checks whether today's report already e
 
 The plugin registers four model tools in legacy single-vault mode:
 
-- `kb_list_modified` recursively scans Markdown files below `vaultPath`, skips hidden/bookkeeping directories, and uses the configured timezone's local midnight as the cutoff.
-- `kb_list_modified` returns stable path order plus `truncated` and `totalBytes` metadata. When any scan budget excludes files, the result is an incomplete summary; the agent must disclose that rather than presenting it as full-vault coverage.
+- `kb_list_modified` recursively scans Markdown files below `vaultPath`, excludes the configured `reportDir`, skips hidden/bookkeeping directories, and uses the configured timezone's local midnight as the cutoff.
+- `kb_list_modified` returns stable path order with each file's byte `size` and Unix-millisecond `mtime`, plus `truncated` and `totalBytes` metadata. When any scan budget excludes files, the result is an incomplete summary; the agent must disclose that rather than presenting it as full-vault coverage.
 - `kb_read` reads a vault-relative file with a UTF-8-safe 64 KiB cap. Lexical paths that escape the vault are rejected.
 - `kb_read_diff` is an optional Git enhancement with a 128 KiB cap; non-Git vaults, missing history, binary files, and oversized diffs return stable non-fatal errors.
 - `kb_write_report` derives the destination from the current configured local date and never accepts a model-supplied output path. It uses exclusive file creation, so an existing report is never overwritten.
@@ -128,6 +128,8 @@ In multi-vault mode, each vault receives the same four capabilities under its `k
 Reports use stable YAML frontmatter (`date`, `timezone`, `source_count`, `generated_by`), followed by `今日概览` and `变更文件` sections. File entries use vault-relative paths only; no-change and budget-truncated scans are stated explicitly.
 
 The runner emits `kb-daily.started`, `kb-daily.skipped`, `kb-daily.created`, `kb-daily.failed`, and `kb-daily.approval-required` events when the host logger is available. Events contain only operational metadata; notifications are optional and require a host `notification.send` adapter.
+
+The host can access the single-vault `RunnerControl` through the `kbDailyRunner` service (`ctx.get('kbDailyRunner')`) to inspect status, trigger `runNow()`, or explicitly `retry(date)`. In multi-vault mode, controls are provided as `kbDailyRunner:<id>` services, such as `ctx.get('kbDailyRunner:work')`. These services are removed when the plugin unloads.
 
 `writePolicy: ask` returns the standard DSH `tools/pre-execute` ask decision. The host approval mechanism decides whether the write continues; if no approval channel is installed, the standard pipeline fails closed. The plugin does not write source notes or bypass host tool policy.
 

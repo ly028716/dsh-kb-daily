@@ -86,6 +86,14 @@ export async function runDailyCheck(ctx: Context, config: RunnerConfig, taskText
     content: [{ type: 'text', text: taskText(date) }],
     source: { kind: 'plugin', plugin: 'kb-daily' },
   }))
+
+  // followup() only confirms that the message was queued. Wait for the
+  // agent's driver to quiesce, then verify that this run produced its report
+  // before allowing callers to mark the run as successful.
+  await agent.whenIdle()
+  if (!await reportExists(config.vaultPath, config.reportDir, reportFileName(date))) {
+    throw new Error(`kb-daily agent completed without creating the report for ${date}`)
+  }
   return 'ran'
 }
 

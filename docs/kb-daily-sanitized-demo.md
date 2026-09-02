@@ -48,7 +48,7 @@
 ```text
 kb_list_modified({ since: "2026-09-02" })
 → {
-    "files": [{ "path": "Notes/release-checklist.md", "size": 67 }],
+    "files": [{ "path": "Notes/release-checklist.md", "size": 67, "mtime": 1788358000000 }],
     "truncated": false,
     "totalBytes": 67
   }

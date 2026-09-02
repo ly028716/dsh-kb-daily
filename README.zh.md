@@ -117,8 +117,8 @@ Vault 的 `id` 和 `agentId` 必须唯一；Vault 路径不能相同、嵌套或
 
 旧的单 Vault 模式注册四个模型工具：
 
-- `kb_list_modified` 递归扫描 `vaultPath` 下的 Markdown 文件，跳过隐藏/维护目录，并以配置时区的本地午夜作为 cutoff。
-- `kb_list_modified` 按稳定路径顺序返回文件，并附带 `truncated` 与 `totalBytes`。如果预算排除了文件，结果是不完整摘要；Agent 必须明确披露，不能让用户误认为覆盖了整个 vault。
+- `kb_list_modified` 递归扫描 `vaultPath` 下的 Markdown 文件，排除配置的 `reportDir`，跳过隐藏/维护目录，并以配置时区的本地午夜作为 cutoff。
+- `kb_list_modified` 按稳定路径顺序返回文件，并为每个文件附带字节 `size` 与 Unix 毫秒时间戳 `mtime`，同时返回 `truncated` 与 `totalBytes`。如果预算排除了文件，结果是不完整摘要；Agent 必须明确披露，不能让用户误认为覆盖了整个 vault。
 - `kb_read` 读取 vault-relative 路径，最多返回 64 KiB 且不会截断 UTF-8 字符。越出 vault 的词法路径会被拒绝。
 - `kb_read_diff` 是可选的 Git 增强，限制为 128 KiB；非 Git vault、无历史、二进制文件和超限 diff 都返回稳定的非致命错误。
 - `kb_write_report` 根据当前配置时区的本地日期计算目标路径，不接受模型提供的输出路径。写入采用独占创建，因此不会覆盖已有日报。
@@ -128,6 +128,8 @@ Vault 的 `id` 和 `agentId` 必须唯一；Vault 路径不能相同、嵌套或
 日报采用稳定的 YAML frontmatter（`date`、`timezone`、`source_count`、`generated_by`），随后是“今日概览”和“变更文件”章节。文件条目只使用 vault-relative 路径；无变更和预算截断都必须明确说明。
 
 宿主提供 logger 时，runner 会发出 `kb-daily.started`、`kb-daily.skipped`、`kb-daily.created`、`kb-daily.failed` 和 `kb-daily.approval-required` 事件。事件只包含运行元数据；通知是可选的，仅在宿主提供 `notification.send` 适配器时发送。
+
+宿主可以通过 `kbDailyRunner` 服务（`ctx.get('kbDailyRunner')`）取得单 Vault 的 `RunnerControl`，调用 `status()` 查看状态、`runNow()` 手动触发，或调用 `retry(date)` 显式重试。多 Vault 模式下，控制服务按 Vault 隔离为 `kbDailyRunner:<id>`，例如 `ctx.get('kbDailyRunner:work')`；插件卸载时这些服务会一并移除。
 
 `writePolicy: ask` 通过标准 DSH `tools/pre-execute` 返回 ask 决策，由宿主审批机制决定是否继续；如果没有审批通道，标准流水线会默认拒绝。插件不会写入源笔记，也不会绕过宿主工具策略。
 

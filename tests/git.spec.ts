@@ -70,6 +70,16 @@ describe('optional Git diff', () => {
     }
   })
 
+  it('rejects non-Markdown diff targets', async () => {
+    const root = await gitFixture()
+    try {
+      await writeFile(join(root, 'secret.txt'), 'secret')
+      await expect(readGitDiff(root, 'secret.txt')).rejects.toMatchObject({ code: 'not_markdown' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects option-like revisions without letting Git create an output file', async () => {
     const root = await gitFixture()
     const injectedOutput = join(root, 'injected-output.patch')

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { assertContained, assertNoSymlinkSegments } from './paths.ts'
+import { assertContained, assertNoSymlinkSegments, isMarkdownPath } from './paths.ts'
 
 export const MAX_DIFF_BYTES = 128 * 1024
 
@@ -11,9 +11,9 @@ export interface DiffResult {
 }
 
 export class DiffError extends Error {
-  readonly code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable' | 'invalid_revision'
+  readonly code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable' | 'invalid_revision' | 'not_markdown'
 
-  constructor(code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable' | 'invalid_revision', message: string) {
+  constructor(code: 'git_unavailable' | 'binary_file' | 'diff_too_large' | 'diff_unreadable' | 'invalid_revision' | 'not_markdown', message: string) {
     super(message)
     this.code = code
     this.name = 'DiffError'
@@ -68,6 +68,9 @@ export async function readGitDiff(vaultPath: string, relPath: string, since?: st
     throw new DiffError('invalid_revision', `Git revision must not start with a dash: ${revision}`)
   }
   const absolutePath = assertContained(vaultPath, relPath)
+  if (!isMarkdownPath(absolutePath)) {
+    throw new DiffError('not_markdown', `only Markdown files are supported: ${relPath}`)
+  }
   await assertNoSymlinkSegments(vaultPath, absolutePath)
   let content: Buffer
   try {

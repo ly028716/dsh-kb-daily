@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -30,6 +30,10 @@ describe('kb-daily model tools', () => {
     try {
       await mkdir(join(root, 'notes'))
       await writeFile(join(root, 'notes', 'today.md'), '# today')
+      const noteMtime = Date.now() - 1_000
+      await utimes(join(root, 'notes', 'today.md'), noteMtime / 1_000, noteMtime / 1_000)
+      await mkdir(join(root, 'Daily'))
+      await writeFile(join(root, 'Daily', '2026-08-23.md'), '# prior report')
       const { ctx, registered } = toolContext()
       const config: ToolsConfig = {
         vaultPath: root,
@@ -40,8 +44,10 @@ describe('kb-daily model tools', () => {
       const dispose = registerTools(ctx, config)
 
       const listed = await registered.get('kb_list_modified')!.execute({ since: '2000-01-01' }, exec)
-      expect(listed).toEqual({ files: [{ path: 'notes/today.md', size: 7 }], truncated: false, totalBytes: 7 })
+      expect(listed).toEqual({ files: [{ path: 'notes/today.md', size: 7, mtime: noteMtime }], truncated: false, totalBytes: 7 })
       expect(await registered.get('kb_read')!.execute({ path: 'notes/today.md' }, exec)).toEqual({ content: '# today', truncated: false })
+      await writeFile(join(root, 'secret.txt'), 'not Markdown')
+      expect(await registered.get('kb_read')!.execute({ path: 'secret.txt' }, exec)).toMatchObject({ code: 'read_failed' })
       expect(await registered.get('kb_read')!.execute({ path: '../outside.md' }, exec)).toMatchObject({ code: 'read_failed' })
 
       const written = await registered.get('kb_write_report')!.execute({ content: '# report' }, exec)
@@ -103,7 +109,11 @@ describe('kb-daily model tools', () => {
         maxFileBytes: 2,
       })
       const value = await registered.get('kb_list_modified')!.execute({ since: '2000-01-01' }, exec)
-      expect(value).toEqual({ files: [{ path: 'a.md', size: 1 }], truncated: true, totalBytes: 1 })
+      expect(value).toMatchObject({
+        files: [{ path: 'a.md', size: 1, mtime: expect.any(Number) }],
+        truncated: true,
+        totalBytes: 1,
+      })
     } finally {
       await rm(root, { recursive: true, force: true })
     }

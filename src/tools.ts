@@ -52,6 +52,7 @@ const FILE_SCHEMA = {
   properties: {
     path: { type: 'string', required: true },
     size: { type: 'number', required: true },
+    mtime: { type: 'number', required: true },
   },
 } as const
 
@@ -131,7 +132,7 @@ export function registerTools(ctx: Context, config: ToolsConfig): () => void {
       async execute(args) {
         const since = args.since ?? dateKey(now(), config.timeZone)
         try {
-          return boundModifiedFiles(await listModifiedFiles(config.vaultPath, dateStartMs(since, config.timeZone)), budget)
+          return boundModifiedFiles(await listModifiedFiles(config.vaultPath, dateStartMs(since, config.timeZone), config.reportDir), budget)
         } catch (error) {
           return failure('list_failed', error)
         }

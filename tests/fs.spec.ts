@@ -24,7 +24,7 @@ describe('kb-daily fs operations', () => {
     const root = await fixtureVault()
     try {
       const files = await listModifiedFiles(root, Date.now() - HOUR)
-      expect(files).toEqual([{ path: 'notes/today.md', size: 7 }])
+      expect(files).toEqual([{ path: 'notes/today.md', size: 7, mtime: expect.any(Number) }])
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -39,11 +39,20 @@ describe('kb-daily fs operations', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+  it('rejects non-Markdown files even when they are contained', async () => {
+    const root = await fixtureVault()
+    try {
+      await writeFile(join(root, '.env'), 'SECRET=not-for-the-agent')
+      await expect(readVaultFile(root, '.env')).rejects.toThrow(/only Markdown files/i)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
   it('bounds an empty scan, exact limits, file counts, and aggregate bytes explicitly', () => {
     const files = [
-      { path: 'a.md', size: 2 },
-      { path: 'b.md', size: 3 },
-      { path: 'c.md', size: 4 },
+      { path: 'a.md', size: 2, mtime: 1 },
+      { path: 'b.md', size: 3, mtime: 2 },
+      { path: 'c.md', size: 4, mtime: 3 },
     ]
     expect(boundModifiedFiles([], { maxFiles: 1 })).toEqual({ files: [], truncated: false, totalBytes: 0 })
     expect(boundModifiedFiles(files, { maxFiles: 3, maxTotalBytes: 9, maxFileBytes: 4 })).toEqual({
@@ -117,7 +126,7 @@ describe('kb-daily fs operations', () => {
       await writeFile(join(root, '.git', 'skip.md'), '# skip')
       await writeFile(join(root, '.hidden', 'skip2.md'), '# skip2')
       const files = await listModifiedFiles(root, 0)
-      expect(files).toEqual([{ path: 'nested/deep.md', size: 6 }])
+      expect(files).toEqual([{ path: 'nested/deep.md', size: 6, mtime: expect.any(Number) }])
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -131,8 +140,8 @@ describe('kb-daily fs operations', () => {
       await writeFile(join(root, 'a.md'), '# a')
       const files = await listModifiedFiles(root, 0)
       expect(files).toEqual([
-        { path: 'a.md', size: 3 },
-        { path: 'z.md', size: 3 },
+        { path: 'a.md', size: 3, mtime: expect.any(Number) },
+        { path: 'z.md', size: 3, mtime: expect.any(Number) },
       ])
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -235,7 +244,7 @@ describe('kb-daily fs operations', () => {
     const root = await fixtureVault()
     try {
       const files = await listModifiedFiles(root + sep, Date.now() - HOUR)
-      expect(files).toEqual([{ path: 'notes/today.md', size: 7 }])
+      expect(files).toEqual([{ path: 'notes/today.md', size: 7, mtime: expect.any(Number) }])
     } finally {
       await rm(root, { recursive: true, force: true })
     }
