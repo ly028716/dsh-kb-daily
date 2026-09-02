@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -69,6 +69,23 @@ describe('kb-daily plugin export shape', () => {
   it('fails the real entry before registering anything for an invalid vault', () => {
     const ctx = { effect: () => { throw new Error('effect must not run') } } as never
     expect(() => kbDaily.apply(ctx, { vaultPath: join(tmpdir(), 'does-not-exist') })).toThrow(/vaultPath/)
+  })
+
+  it('rejects a symbolic-link or junction vault root at load time', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-plugin-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    const linkedVault = join(root, 'vault-link')
+    try {
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+      await symlink(outside, linkedVault, linkType)
+      expect(() => kbDaily.apply({ effect: () => vi.fn() } as never, { vaultPath: linkedVault })).toThrow(/vaultPath/)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return
+      throw error
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
   })
 
   it('rejects a report directory outside the vault at load time', async () => {

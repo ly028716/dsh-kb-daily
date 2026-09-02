@@ -14,8 +14,8 @@ export function resolveReportPath(vaultPath: string, reportDir: string, fileName
 
 /**
  * Resolve a vault-relative path; reject anything that escapes the vault
- * lexically. Symlinks are not resolved: a vault-internal link that escapes
- * the vault is out of v1 scope.
+ * lexically. Callers that access the filesystem must also use
+ * assertNoSymlinkSegments() to enforce physical containment.
  * @param vaultPath - absolute path to the vault root.
  * @param relPath - vault-relative path to resolve.
  * @returns the resolved absolute path inside the vault.

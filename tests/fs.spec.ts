@@ -146,6 +146,19 @@ describe('kb-daily fs operations', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+  it('rejects report existence checks through symlinked or junction report directories', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    try {
+      const linkType = process.platform === 'win32' ? 'junction' : 'dir'
+      await writeFile(join(outside, '2026-08-17.md'), '# outside report')
+      await symlink(outside, join(root, 'Daily'), linkType)
+      await expect(reportExists(root, 'Daily', '2026-08-17.md')).rejects.toThrow(/symbolic link/i)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
   it('rethrows non-missing report-existence errors', async () => {
     const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
     try {

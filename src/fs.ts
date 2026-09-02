@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { assertContained, assertNoSymlinkSegments, resolveReportPath } from './paths.ts'
+import { assertContained, assertNoSymlinkSegments } from './paths.ts'
 
 /** One .md file found by a vault scan. */
 export interface ModifiedFile {
@@ -185,8 +185,10 @@ export async function writeReport(
  * @returns true when the report file exists; false only for ENOENT/ENOTDIR.
  */
 export async function reportExists(vaultPath: string, reportDir: string, fileName: string): Promise<boolean> {
+  const reportPath = assertContained(vaultPath, join(reportDir, fileName))
+  await assertNoSymlinkSegments(vaultPath, reportPath)
   try {
-    await stat(resolveReportPath(vaultPath, reportDir, fileName))
+    await stat(reportPath)
     return true
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') {

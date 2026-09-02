@@ -5,7 +5,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { accessSync, constants, statSync } from 'node:fs'
+import { accessSync, constants, lstatSync, statSync } from 'node:fs'
 import { registerWriteApproval } from './approval.ts'
 import { sectionName, sectionText, taskFraming } from './prompt.ts'
 import { startRunner } from './runner.ts'
@@ -179,6 +179,7 @@ function validateVault(vault: NormalizedVault): void {
     throw new Error(`kb-daily: checkIntervalMs must be a positive finite number, got ${vault.checkIntervalMs}`)
   }
   try {
+    if (lstatSync(vault.vaultPath).isSymbolicLink()) throw new Error('symbolic link is not allowed as vaultPath')
     if (!statSync(vault.vaultPath).isDirectory()) throw new Error('not a directory')
     accessSync(vault.vaultPath, constants.R_OK)
     new Intl.DateTimeFormat('en-US', { timeZone: vault.timeZone }).format()
