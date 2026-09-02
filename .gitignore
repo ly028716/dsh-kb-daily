@@ -3,3 +3,15 @@ node_modules/
 .worktrees/
 lib/
 *.tgz
+
+# Local Harness Web profile/bootstrap artifacts.
+.dsh-kb-daily-web-help/
+INSTALLATION.md
+VERIFICATION_GUIDE.md
+
+# Local/sample knowledge-base content and generated daily reports.
+docs/Daily/
+docs/2026-08-31-meeting-notes.md
+docs/example-note.md
+docs/project-roadmap-update.md
+docs/technical-decision-record.md
