@@ -148,6 +148,6 @@ pnpm run verify:core
 pnpm run verify
 ```
 
-`verify:core` 是 CI 的阻塞门禁。`verify` 还会执行真实 DSH profile smoke test。维护者可参照[发布运行手册](docs/releasing.md)准备 GitHub Release；npm 发布需要单独的明确授权，且不应假定包已可用。
+Pull Request 使用 `verify:core` 作为 CI 的阻塞门禁。匹配 `v*` 的发布 tag 会在创建 GitHub Release 前运行完整的 `verify` 门禁，其中包括真实的 DSH profile smoke test。维护者可参照[发布运行手册](docs/releasing.md)准备 GitHub Release；npm 发布需要单独的明确授权，且不应假定包已可用。
 
 本包只使用已发布的 DeepSeek Harness 与 Cordis 公共 API。peer dependency 会镜像到开发依赖以支持本地类型检查和测试，不需要任何 `workspace:` 依赖。
