@@ -3,6 +3,7 @@ node_modules/
 .worktrees/
 lib/
 *.tgz
+artifacts/
 
 # Local Harness Web profile/bootstrap artifacts.
 .dsh-kb-daily-web-help/

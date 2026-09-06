@@ -148,6 +148,6 @@ pnpm run verify:core
 pnpm run verify
 ```
 
-`verify:core` 是 CI 的阻塞门禁。`verify` 还会执行真实 DSH profile smoke test；在调查 DSH `0.1.0-rc.8` profile 初始化问题期间，GitHub Actions 中的 smoke 仅支持手动触发且不会阻塞主检查。
+`verify:core` 是 CI 的阻塞门禁。`verify` 还会执行真实 DSH profile smoke test。维护者可参照[发布运行手册](docs/releasing.md)准备 GitHub Release；npm 发布需要单独的明确授权，且不应假定包已可用。
 
 本包只使用已发布的 DeepSeek Harness 与 Cordis 公共 API。peer dependency 会镜像到开发依赖以支持本地类型检查和测试，不需要任何 `workspace:` 依赖。

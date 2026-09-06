@@ -148,6 +148,6 @@ pnpm run verify:core
 pnpm run verify
 ```
 
-`verify:core` is the blocking CI gate. `verify` additionally runs the real DSH profile smoke test; that smoke test is available as a manual GitHub Actions dispatch and is currently non-blocking while the DSH `0.1.0-rc.8` profile initialization issue is investigated.
+`verify:core` is the blocking CI gate. `verify` additionally runs the real DSH profile smoke test. Maintainers can follow the [release runbook](docs/releasing.md) to prepare a GitHub Release; npm publication requires separate, explicit authorization and is not assumed to be available.
 
 The package uses published DeepSeek Harness and Cordis APIs only. Its peer dependencies are mirrored as development dependencies for local typechecking and tests; no `workspace:` dependency is required.
