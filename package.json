@@ -52,6 +52,7 @@
     "pack:inspect": "vitest run tests/packed-exports.spec.ts",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
+    "release:check": "node scripts/release-check.mjs",
     "smoke:dsh": "node scripts/smoke-dsh.mjs",
     "test": "vitest run --exclude tests/packed-exports.spec.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
