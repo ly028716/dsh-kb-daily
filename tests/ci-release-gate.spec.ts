@@ -13,6 +13,7 @@ describe('CI release gate', () => {
 
     expect(workflow.on.push.branches).toEqual(['main'])
     expect(workflow.on.pull_request).toBeNull()
+    expect(workflow.on.workflow_dispatch).toBeNull()
     expect(workflow.jobs['verify-core']).toBeDefined()
     expect(smoke.if).toBeUndefined()
     expect(smoke['continue-on-error']).toBeUndefined()
