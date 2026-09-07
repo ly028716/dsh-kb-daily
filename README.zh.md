@@ -127,9 +127,11 @@ Vault 的 `id` 和 `agentId` 必须唯一；Vault 路径不能相同、嵌套或
 
 日报采用稳定的 YAML frontmatter（`date`、`timezone`、`source_count`、`generated_by`），随后是“今日概览”和“变更文件”章节。文件条目只使用 vault-relative 路径；无变更和预算截断都必须明确说明。
 
-宿主提供 logger 时，runner 会发出 `kb-daily.started`、`kb-daily.skipped`、`kb-daily.created`、`kb-daily.failed` 和 `kb-daily.approval-required` 事件。事件只包含运行元数据；通知是可选的，仅在宿主提供 `notification.send` 适配器时发送。
+宿主提供 logger 时，runner 会发出 `kb-daily.started`、`kb-daily.skipped`、`kb-daily.created`、`kb-daily.failed`、`kb-daily.approval-required`、`kb-daily.approval-rejected` 和 `kb-daily.approval-timeout` 事件。事件只包含运行元数据；通知是可选的，仅在宿主提供 `notification.send` 适配器时发送。
 
 宿主可以通过 `kbDailyRunner` 服务（`ctx.get('kbDailyRunner')`）取得单 Vault 的 `RunnerControl`，调用 `status()` 查看状态、`runNow()` 手动触发，或调用 `retry(date)` 显式重试。多 Vault 模式下，控制服务按 Vault 隔离为 `kbDailyRunner:<id>`，例如 `ctx.get('kbDailyRunner:work')`；插件卸载时这些服务会一并移除。
+
+当 `ask` 写入等待宿主处理时，`status().state` 为 `awaiting-approval`；明确拒绝会变为 `rejected`，被取消或过期的审批会变为 `timed-out`。审批通道不可用时仍为 `failed`，并保留原始原因。运行期间重复调用 `runNow()` 会复用同一个在途任务，不会重复创建 Agent 任务。
 
 `writePolicy: ask` 通过标准 DSH `tools/pre-execute` 返回 ask 决策，由宿主审批机制决定是否继续；如果没有审批通道，标准流水线会默认拒绝。插件不会写入源笔记，也不会绕过宿主工具策略。
 

@@ -26,7 +26,13 @@ export interface RunOptions {
 
 export type CheckOutcome = 'ran' | 'already-done'
 
-export type RunnerEvent = 'kb-daily.started' | 'kb-daily.skipped' | 'kb-daily.created' | 'kb-daily.failed' | 'kb-daily.approval-required'
+export type RunnerEvent = 'kb-daily.started' | 'kb-daily.skipped' | 'kb-daily.created' | 'kb-daily.failed' | 'kb-daily.approval-required' | 'kb-daily.approval-rejected' | 'kb-daily.approval-timeout'
+export type ApprovalStatusUpdate =
+  | { state: 'awaiting-approval' }
+  | { state: 'approved' }
+  | { state: 'rejected'; reason: string }
+  | { state: 'timed-out'; reason: string }
+  | { state: 'unavailable'; reason: string }
 type LogMethod = (message: unknown, ...params: unknown[]) => void
 type LoggerLike = Partial<Record<'info' | 'warn' | 'error', LogMethod>>
 
@@ -50,9 +56,9 @@ function errorCategory(error: unknown): string {
 }
 
 function notifyHost(ctx: Context, event: 'kb-daily.created' | 'kb-daily.failed', fields: Record<string, unknown>): void {
-  const notification = (ctx as unknown as { notification?: unknown }).notification
-  if (typeof notification !== 'object' || notification === null || !('send' in notification) || typeof notification.send !== 'function') return
   try {
+    const notification = (ctx as unknown as { notification?: unknown }).notification
+    if (typeof notification !== 'object' || notification === null || !('send' in notification) || typeof notification.send !== 'function') return
     Promise.resolve((notification.send as (payload: unknown) => unknown)({ event, ...fields })).catch(() => undefined)
   } catch { /* optional notifications must not break the runner */ }
 }
@@ -124,15 +130,41 @@ export function createGuard(deps: GuardDeps): () => Promise<void> {
 }
 
 /** Create explicit controls plus lifecycle cleanup for the daily runner. */
-export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date: string) => string): { control: RunnerControl; stop: () => Promise<void> } {
+export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date: string) => string): { control: RunnerControl; updateApprovalStatus: (update: ApprovalStatusUpdate) => void; stop: () => Promise<void> } {
   const handles = new Set<AgentHandle>()
   const activeRuns = new Set<Promise<void>>()
   let inFlight: Promise<CheckOutcome> | undefined
   let attemptedDay: string | undefined
   let stopped = false
+  let approvalUnavailable = false
   let currentStatus: RunnerStatus = {
     date: dateKey(new Date(), config.timeZone),
     state: 'idle',
+  }
+
+  const updateApprovalStatus = (update: ApprovalStatusUpdate): void => {
+    if (stopped || inFlight === undefined) return
+    if (update.state === 'awaiting-approval') {
+      currentStatus = { ...currentStatus, state: 'awaiting-approval' }
+      return
+    }
+    if (update.state === 'approved') {
+      if (currentStatus.state === 'awaiting-approval') currentStatus = { ...currentStatus, state: 'running' }
+      return
+    }
+    if (update.state === 'unavailable') {
+      approvalUnavailable = true
+      currentStatus = { ...currentStatus, state: 'failed', lastError: update.reason }
+      return
+    }
+    currentStatus = { ...currentStatus, state: update.state, lastError: update.reason }
+    const event = update.state === 'rejected' ? 'kb-daily.approval-rejected' : 'kb-daily.approval-timeout'
+    logRunnerEvent(ctx, event, {
+      date: currentStatus.date,
+      fileCount: null,
+      status: update.state,
+      errorCategory: update.state === 'rejected' ? 'approval_rejected' : 'approval_timeout',
+    }, 'warn')
   }
 
   const run = async (targetDate: string, force: boolean): Promise<CheckOutcome> => {
@@ -166,8 +198,17 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
       notifyHost(ctx, 'kb-daily.created', { date: targetDate, status: outcome })
       return outcome
     })().catch(error => {
-      currentStatus = { ...currentStatus, state: 'failed', lastError: error instanceof Error ? error.message : String(error) }
-      const fields = { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: 'failed', errorCategory: errorCategory(error) }
+      const approvalTerminal = currentStatus.state === 'rejected' || currentStatus.state === 'timed-out'
+      if (approvalTerminal) throw error
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (!approvalUnavailable) currentStatus = { ...currentStatus, state: 'failed', lastError: errorMessage }
+      const fields = {
+        date: targetDate,
+        fileCount: null,
+        durationMs: Date.now() - startedAt,
+        status: 'failed',
+        errorCategory: approvalUnavailable ? 'approval_unavailable' : errorCategory(error),
+      }
       logRunnerEvent(ctx, 'kb-daily.failed', fields, 'error')
       notifyHost(ctx, 'kb-daily.failed', fields)
       throw error
@@ -207,7 +248,7 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
     await Promise.allSettled([...handles].map(handle => handle.dispose()))
     currentStatus = { ...currentStatus, state: 'stopped' }
   }
-  return { control, stop }
+  return { control, updateApprovalStatus, stop }
 }
 
 /** Start the immediate and interval-based catch-up checks. */

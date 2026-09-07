@@ -127,9 +127,11 @@ In multi-vault mode, each vault receives the same four capabilities under its `k
 
 Reports use stable YAML frontmatter (`date`, `timezone`, `source_count`, `generated_by`), followed by `今日概览` and `变更文件` sections. File entries use vault-relative paths only; no-change and budget-truncated scans are stated explicitly.
 
-The runner emits `kb-daily.started`, `kb-daily.skipped`, `kb-daily.created`, `kb-daily.failed`, and `kb-daily.approval-required` events when the host logger is available. Events contain only operational metadata; notifications are optional and require a host `notification.send` adapter.
+The runner emits `kb-daily.started`, `kb-daily.skipped`, `kb-daily.created`, `kb-daily.failed`, `kb-daily.approval-required`, `kb-daily.approval-rejected`, and `kb-daily.approval-timeout` events when the host logger is available. Events contain only operational metadata; notifications are optional and require a host `notification.send` adapter.
 
 The host can access the single-vault `RunnerControl` through the `kbDailyRunner` service (`ctx.get('kbDailyRunner')`) to inspect status, trigger `runNow()`, or explicitly `retry(date)`. In multi-vault mode, controls are provided as `kbDailyRunner:<id>` services, such as `ctx.get('kbDailyRunner:work')`. These services are removed when the plugin unloads.
+
+While an `ask` write is waiting for the host, `status().state` is `awaiting-approval`; an explicit rejection becomes `rejected`, and a cancelled/expired approval becomes `timed-out`. An unavailable approval channel remains `failed` with its original reason. Repeated `runNow()` calls while a run is active share the in-flight run and do not trigger another agent task.
 
 `writePolicy: ask` returns the standard DSH `tools/pre-execute` ask decision. The host approval mechanism decides whether the write continues; if no approval channel is installed, the standard pipeline fails closed. The plugin does not write source notes or bypass host tool policy.
 

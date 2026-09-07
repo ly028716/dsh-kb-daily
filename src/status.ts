@@ -8,7 +8,7 @@ export function runnerServiceName(id?: string): string {
   return id === undefined ? RUNNER_SERVICE : `${RUNNER_SERVICE}:${id}`
 }
 
-export type RunnerState = 'idle' | 'running' | 'succeeded' | 'already-done' | 'failed' | 'stopped'
+export type RunnerState = 'idle' | 'running' | 'awaiting-approval' | 'succeeded' | 'already-done' | 'rejected' | 'timed-out' | 'failed' | 'stopped'
 
 export interface RunnerStatus {
   date: string

@@ -177,12 +177,51 @@ describe('kb-daily runner', () => {
         vaultPath: root, reportDir: 'Daily', timeZone: 'UTC', agentId: 'kb-daily', checkIntervalMs: 1000,
       }, date => `run ${date}`)
       await vi.waitFor(() => expect(agents.create).toHaveBeenCalledOnce())
-      expect(runner.control.status().state).toBe('succeeded')
+      await vi.waitFor(() => expect(runner.control.status().state).toBe('succeeded'))
       expect(await runner.control.runNow()).toBe('already-done')
       expect(await runner.control.retry('2026-08-24')).toBe('ran')
       expect(runner.control.status()).toMatchObject({ date: '2026-08-24', state: 'succeeded', reportPath: join(root, 'Daily', '2026-08-24.md') })
       await runner.stop()
       expect(runner.control.status().state).toBe('stopped')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('exposes awaiting approval, preserves rejection, and deduplicates triggers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-approval-state-'))
+    try {
+      let releaseIdle!: () => void
+      const idle = new Promise<void>(resolve => { releaseIdle = resolve })
+      const handle = {
+        agent: { followup: vi.fn(), whenIdle: vi.fn(() => idle) },
+        dispose: vi.fn(async () => undefined),
+      }
+      const agents = {
+        get: vi.fn(() => undefined),
+        resume: vi.fn(async () => { throw new Error('no persistence') }),
+        create: vi.fn(async () => handle),
+      }
+      const ctx = { agents, interval: vi.fn(() => vi.fn()) } as never
+      const runner = createRunner(ctx, {
+        vaultPath: root, reportDir: 'Daily', timeZone: 'UTC', agentId: 'kb-daily', checkIntervalMs: 1000,
+      }, () => 'run')
+
+      await vi.waitFor(() => expect(agents.create).toHaveBeenCalledOnce())
+      runner.updateApprovalStatus({ state: 'awaiting-approval' })
+      expect(runner.control.status().state).toBe('awaiting-approval')
+
+      const duplicate = runner.control.runNow()
+      const thirdTrigger = runner.control.runNow()
+      expect(agents.create).toHaveBeenCalledOnce()
+
+      runner.updateApprovalStatus({ state: 'timed-out', reason: 'approval timed out' })
+      expect(runner.control.status()).toMatchObject({ state: 'timed-out', lastError: 'approval timed out' })
+      runner.updateApprovalStatus({ state: 'rejected', reason: 'the user rejected the report write' })
+      releaseIdle()
+      await expect(Promise.all([duplicate, thirdTrigger])).rejects.toThrow(/without creating the report/i)
+      expect(runner.control.status()).toMatchObject({ state: 'rejected', lastError: 'the user rejected the report write' })
+      await runner.stop()
     } finally {
       await rm(root, { recursive: true, force: true })
     }

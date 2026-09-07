@@ -212,7 +212,6 @@ export function apply(ctx: Context, config: Config): void {
           ...(vault.maxTotalBytes === undefined ? {} : { maxTotalBytes: vault.maxTotalBytes }),
           ...(vault.maxFileBytes === undefined ? {} : { maxFileBytes: vault.maxFileBytes }),
         }))
-        disposers.push(registerWriteApproval(ctx, { writePolicy: vault.writePolicy, reportDir: vault.reportDir, writeToolName: names.writeReport }))
         const runner = createRunner(ctx, {
           vaultPath: vault.vaultPath,
           reportDir: vault.reportDir,
@@ -222,6 +221,12 @@ export function apply(ctx: Context, config: Config): void {
           ...(vault.provider === undefined ? {} : { provider: vault.provider }),
           ...(vault.model === undefined ? {} : { model: vault.model }),
         }, taskFraming)
+        disposers.push(registerWriteApproval(ctx, {
+          writePolicy: vault.writePolicy,
+          reportDir: vault.reportDir,
+          writeToolName: names.writeReport,
+          onStatusChange: runner.updateApprovalStatus,
+        }))
         disposers.push(runner.stop)
         disposers.push(ctx.provide(runnerServiceName(vault.id), runner.control))
       }
