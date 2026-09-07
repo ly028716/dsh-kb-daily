@@ -11,9 +11,13 @@ describe('CI release gate', () => {
   it('runs the real DSH smoke job as a blocking job for normal CI events', () => {
     const smoke = workflow.jobs.smoke
 
+    expect(workflow.on.push.branches).toEqual(['main'])
+    expect(workflow.on.pull_request).toBeNull()
+    expect(workflow.jobs['verify-core']).toBeDefined()
     expect(smoke.if).toBeUndefined()
     expect(smoke['continue-on-error']).toBeUndefined()
     expect(smoke.needs).toBe('verify-core')
+    expect(smoke['timeout-minutes']).toBe(5)
     expect(smoke.steps).toContainEqual({ run: 'pnpm run smoke:dsh' })
   })
 })
