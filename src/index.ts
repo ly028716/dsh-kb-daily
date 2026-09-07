@@ -9,7 +9,7 @@ import { accessSync, constants, lstatSync, statSync } from 'node:fs'
 import { registerWriteApproval } from './approval.ts'
 import { sectionName, sectionText, taskFraming } from './prompt.ts'
 import { createRunner } from './runner.ts'
-import { runnerServiceName, type RunnerControl, type RunnerState, type RunnerStatus, RUNNER_SERVICE } from './status.ts'
+import { runnerServiceName, type RunDiagnostics, type RunnerControl, type RunnerState, type RunnerStatus, type ToolCallSummary, RUNNER_SERVICE } from './status.ts'
 import { registerTools, toolNames, type ToolNames } from './tools.ts'
 import { assertContained } from './paths.ts'
 import { isAbsolute, relative, resolve } from 'node:path'
@@ -17,7 +17,7 @@ import { isAbsolute, relative, resolve } from 'node:path'
 /** Cordis function-plugin name. */
 export const name = 'kb-daily'
 export { RUNNER_SERVICE, runnerServiceName }
-export type { RunnerControl, RunnerState, RunnerStatus }
+export type { RunDiagnostics, RunnerControl, RunnerState, RunnerStatus, ToolCallSummary }
 /** Services required before the plugin can run. */
 export const inject = ['agents', 'tools', 'systemPrompt', 'timer']
 
@@ -218,6 +218,8 @@ export function apply(ctx: Context, config: Config): void {
           timeZone: vault.timeZone,
           agentId: vault.agentId,
           checkIntervalMs: vault.checkIntervalMs,
+          toolNames: Object.values(names),
+          readToolName: names.read,
           ...(vault.provider === undefined ? {} : { provider: vault.provider }),
           ...(vault.model === undefined ? {} : { model: vault.model }),
         }, taskFraming)

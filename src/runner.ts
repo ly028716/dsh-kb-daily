@@ -6,7 +6,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { dateKey, reportFileName } from './date.ts'
 import { reportExists } from './fs.ts'
 import { resolveReportPath } from './paths.ts'
-import type { RunnerControl, RunnerStatus } from './status.ts'
+import type { RunDiagnostics, RunnerControl, RunnerStatus, ToolCallSummary } from './status.ts'
 
 export interface RunnerConfig {
   vaultPath: string
@@ -16,6 +16,8 @@ export interface RunnerConfig {
   provider?: string
   model?: string
   checkIntervalMs: number
+  toolNames?: readonly string[]
+  readToolName?: string
 }
 
 export interface RunOptions {
@@ -35,6 +37,35 @@ export type ApprovalStatusUpdate =
   | { state: 'unavailable'; reason: string }
 type LogMethod = (message: unknown, ...params: unknown[]) => void
 type LoggerLike = Partial<Record<'info' | 'warn' | 'error', LogMethod>>
+interface MutableDiagnostics {
+  filesRead: number
+  truncationCount: number
+  toolCalls: Map<string, ToolCallSummary>
+}
+
+function createDiagnostics(): MutableDiagnostics {
+  return { filesRead: 0, truncationCount: 0, toolCalls: new Map() }
+}
+
+function snapshotDiagnostics(diagnostics: MutableDiagnostics, durationMs: number): RunDiagnostics {
+  const toolCalls: Record<string, ToolCallSummary> = {}
+  for (const name of [...diagnostics.toolCalls.keys()].sort()) {
+    const summary = diagnostics.toolCalls.get(name)
+    if (summary !== undefined) toolCalls[name] = { ...summary }
+  }
+  return {
+    durationMs,
+    filesRead: diagnostics.filesRead,
+    truncationCount: diagnostics.truncationCount,
+    toolCalls,
+  }
+}
+
+function redactDiagnosticText(error: unknown, vaultPath: string): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const redacted = vaultPath.length === 0 ? message : message.split(vaultPath).join('<vault>')
+  return redacted.length > 512 ? `${redacted.slice(0, 509)}...` : redacted
+}
 
 /** Emit a structured, redacted lifecycle event when the host exposes logging. */
 export function logRunnerEvent(ctx: Context, event: RunnerEvent, fields: Record<string, unknown>, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -137,6 +168,42 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
   let attemptedDay: string | undefined
   let stopped = false
   let approvalUnavailable = false
+  let runStartedAt: number | undefined
+  let diagnostics = createDiagnostics()
+  const diagnosticToolNames = new Set(config.toolNames ?? [])
+  const observeToolResult = (exec: { name: string }, result: { isError: boolean; value?: unknown }): void => {
+    if (stopped || inFlight === undefined || !diagnosticToolNames.has(exec.name)) return
+    const value = result.value
+    const valueRecord = typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined
+    const toolFailed = result.isError || typeof valueRecord?.code === 'string' && valueRecord.code !== 'report_exists'
+    const previous = diagnostics.toolCalls.get(exec.name) ?? { count: 0, failures: 0 }
+    diagnostics.toolCalls.set(exec.name, {
+      count: previous.count + 1,
+      failures: previous.failures + (toolFailed ? 1 : 0),
+    })
+    if (toolFailed) return
+    if (exec.name === config.readToolName && typeof valueRecord?.content === 'string') diagnostics.filesRead += 1
+    if (valueRecord?.truncated === true) {
+      diagnostics.truncationCount += 1
+    }
+  }
+  let disposeToolObserver = (): void => undefined
+  const contextOn = (ctx as unknown as { on?: unknown }).on
+  if (typeof contextOn === 'function') {
+    try {
+      disposeToolObserver = (contextOn as (name: string, callback: typeof observeToolResult) => () => void).call(ctx, 'tools/result', observeToolResult)
+    } catch { /* lightweight test contexts may omit the tools event surface */ }
+  }
+
+  const diagnosticFields = (durationMs: number): Record<string, unknown> => {
+    const snapshot = snapshotDiagnostics(diagnostics, durationMs)
+    return {
+      durationMs: snapshot.durationMs,
+      filesRead: snapshot.filesRead,
+      truncationCount: snapshot.truncationCount,
+      toolCalls: snapshot.toolCalls,
+    }
+  }
   let currentStatus: RunnerStatus = {
     date: dateKey(new Date(), config.timeZone),
     state: 'idle',
@@ -154,38 +221,58 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
     }
     if (update.state === 'unavailable') {
       approvalUnavailable = true
-      currentStatus = { ...currentStatus, state: 'failed', lastError: update.reason }
+      const reason = redactDiagnosticText(update.reason, config.vaultPath)
+      currentStatus = {
+        ...currentStatus,
+        state: 'failed',
+        lastError: reason,
+        ...(runStartedAt === undefined ? {} : { diagnostics: snapshotDiagnostics(diagnostics, Date.now() - runStartedAt) }),
+      }
       return
     }
-    currentStatus = { ...currentStatus, state: update.state, lastError: update.reason }
+    const reason = redactDiagnosticText(update.reason, config.vaultPath)
+    currentStatus = {
+      ...currentStatus,
+      state: update.state,
+      lastError: reason,
+      ...(runStartedAt === undefined ? {} : { diagnostics: snapshotDiagnostics(diagnostics, Date.now() - runStartedAt) }),
+    }
     const event = update.state === 'rejected' ? 'kb-daily.approval-rejected' : 'kb-daily.approval-timeout'
     logRunnerEvent(ctx, event, {
       date: currentStatus.date,
       fileCount: null,
       status: update.state,
       errorCategory: update.state === 'rejected' ? 'approval_rejected' : 'approval_timeout',
+      failureReason: reason,
+      ...(runStartedAt === undefined ? {} : diagnosticFields(Date.now() - runStartedAt)),
     }, 'warn')
   }
 
   const run = async (targetDate: string, force: boolean): Promise<CheckOutcome> => {
     if (stopped) throw new Error('kb-daily runner is stopped')
     if (inFlight !== undefined) return inFlight
+    runStartedAt = Date.now()
+    diagnostics = createDiagnostics()
+    approvalUnavailable = false
     const startingStatus = { ...currentStatus, date: targetDate, state: 'running' as const, lastAttemptAt: new Date().toISOString() }
     delete startingStatus.lastError
+    startingStatus.diagnostics = snapshotDiagnostics(diagnostics, 0)
     currentStatus = startingStatus
-    const startedAt = Date.now()
-    logRunnerEvent(ctx, 'kb-daily.started', { date: targetDate, fileCount: null, status: 'running' })
+    const startedAt = runStartedAt
+    logRunnerEvent(ctx, 'kb-daily.started', { date: targetDate, fileCount: null, status: 'running', ...diagnosticFields(0) })
     inFlight = (async () => {
       const destination = resolveReportPath(config.vaultPath, config.reportDir, reportFileName(targetDate))
       if (!force && attemptedDay === targetDate) {
-        currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination }
-        logRunnerEvent(ctx, 'kb-daily.skipped', { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: 'already-done' })
+        const durationMs = Date.now() - startedAt
+        currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination, diagnostics: snapshotDiagnostics(diagnostics, durationMs) }
+        logRunnerEvent(ctx, 'kb-daily.skipped', { date: targetDate, fileCount: null, status: 'already-done', ...diagnosticFields(durationMs) })
         return 'already-done'
       }
       if (await reportExists(config.vaultPath, config.reportDir, reportFileName(targetDate))) {
         attemptedDay = targetDate
-        currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination }
-        logRunnerEvent(ctx, 'kb-daily.skipped', { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: 'already-done' })
+        const durationMs = Date.now() - startedAt
+        currentStatus = { ...currentStatus, state: 'already-done', reportPath: destination, diagnostics: snapshotDiagnostics(diagnostics, durationMs) }
+        logRunnerEvent(ctx, 'kb-daily.skipped', { date: targetDate, fileCount: null, status: 'already-done', ...diagnosticFields(durationMs) })
         return 'already-done'
       }
       attemptedDay = targetDate
@@ -193,21 +280,25 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
         date: targetDate,
         trackHandle: handle => handles.add(handle),
       })
-      currentStatus = { ...currentStatus, state: 'succeeded', reportPath: destination }
-      logRunnerEvent(ctx, 'kb-daily.created', { date: targetDate, fileCount: null, durationMs: Date.now() - startedAt, status: outcome })
-      notifyHost(ctx, 'kb-daily.created', { date: targetDate, status: outcome })
+      const durationMs = Date.now() - startedAt
+      currentStatus = { ...currentStatus, state: 'succeeded', reportPath: destination, diagnostics: snapshotDiagnostics(diagnostics, durationMs) }
+      logRunnerEvent(ctx, 'kb-daily.created', { date: targetDate, fileCount: null, status: outcome, ...diagnosticFields(durationMs) })
+      notifyHost(ctx, 'kb-daily.created', { date: targetDate, status: outcome, ...diagnosticFields(durationMs) })
       return outcome
     })().catch(error => {
       const approvalTerminal = currentStatus.state === 'rejected' || currentStatus.state === 'timed-out'
       if (approvalTerminal) throw error
       const errorMessage = error instanceof Error ? error.message : String(error)
-      if (!approvalUnavailable) currentStatus = { ...currentStatus, state: 'failed', lastError: errorMessage }
+      const failureReason = redactDiagnosticText(errorMessage, config.vaultPath)
+      const durationMs = Date.now() - startedAt
+      if (!approvalUnavailable) currentStatus = { ...currentStatus, state: 'failed', lastError: failureReason, diagnostics: snapshotDiagnostics(diagnostics, durationMs) }
       const fields = {
         date: targetDate,
         fileCount: null,
-        durationMs: Date.now() - startedAt,
         status: 'failed',
         errorCategory: approvalUnavailable ? 'approval_unavailable' : errorCategory(error),
+        failureReason: approvalUnavailable ? currentStatus.lastError : failureReason,
+        ...diagnosticFields(durationMs),
       }
       logRunnerEvent(ctx, 'kb-daily.failed', fields, 'error')
       notifyHost(ctx, 'kb-daily.failed', fields)
@@ -244,6 +335,7 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
     if (stopped) return
     stopped = true
     stopTimer()
+    disposeToolObserver()
     await Promise.allSettled([...activeRuns])
     await Promise.allSettled([...handles].map(handle => handle.dispose()))
     currentStatus = { ...currentStatus, state: 'stopped' }

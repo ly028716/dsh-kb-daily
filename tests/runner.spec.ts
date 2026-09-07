@@ -141,7 +141,13 @@ describe('kb-daily runner', () => {
       await vi.waitFor(() => expect(runner.control.status().state).toBe('failed'))
       expect(runner.control.status().lastError).toMatch(/without creating the report/i)
       expect(info).not.toHaveBeenCalledWith('kb-daily.created', expect.anything())
-      expect(error).toHaveBeenCalledWith('kb-daily.failed', expect.objectContaining({ status: 'failed' }))
+      expect(error).toHaveBeenCalledWith('kb-daily.failed', expect.objectContaining({
+        status: 'failed',
+        failureReason: expect.stringContaining('without creating the report'),
+        filesRead: 0,
+        truncationCount: 0,
+        toolCalls: {},
+      }))
       await runner.stop()
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -273,6 +279,67 @@ describe('kb-daily runner', () => {
       expect(serialized).not.toContain(root)
       expect(serialized).not.toContain('no persistence')
       await runner.stop()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('records safe run diagnostics from tool results without logging content', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-diagnostics-'))
+    try {
+      const info = vi.fn()
+      let observeToolResult!: (exec: { name: string }, result: { isError: boolean; value?: unknown }) => void
+      const agents = {
+        get: vi.fn(() => undefined),
+        resume: vi.fn(async () => { throw new Error('no persistence') }),
+        create: vi.fn(async () => ({
+          agent: {
+            followup: vi.fn(() => {
+              observeToolResult({ name: 'kb_list_modified' }, { isError: false, value: { files: [{ path: 'notes/private.md' }], truncated: true } })
+              observeToolResult({ name: 'kb_read' }, { isError: false, value: { content: 'PRIVATE NOTE CONTENT', truncated: true } })
+              observeToolResult({ name: 'kb_write_report' }, { isError: false, value: { created: true } })
+              mkdirSync(join(root, 'Daily'), { recursive: true })
+              writeFileSync(join(root, 'Daily', `${dateKey(new Date(), 'UTC')}.md`), '# report')
+            }),
+            whenIdle: vi.fn(async () => undefined),
+          },
+          dispose: vi.fn(async () => undefined),
+        })),
+      }
+      const ctx = {
+        agents,
+        logger: { info },
+        on: vi.fn((name: string, callback: unknown) => {
+          if (name === 'tools/result') observeToolResult = callback as typeof observeToolResult
+          return vi.fn()
+        }),
+        interval: vi.fn(() => vi.fn()),
+      } as never
+
+      createRunner(ctx, {
+        vaultPath: root,
+        reportDir: 'Daily',
+        timeZone: 'UTC',
+        agentId: 'kb-daily',
+        checkIntervalMs: 1000,
+        toolNames: ['kb_list_modified', 'kb_read', 'kb_write_report'],
+        readToolName: 'kb_read',
+      }, () => 'run')
+
+      await vi.waitFor(() => expect(info).toHaveBeenCalledWith('kb-daily.created', expect.objectContaining({
+        durationMs: expect.any(Number),
+        filesRead: 1,
+        fileCount: null,
+        truncationCount: 2,
+        toolCalls: {
+          kb_list_modified: { count: 1, failures: 0 },
+          kb_read: { count: 1, failures: 0 },
+          kb_write_report: { count: 1, failures: 0 },
+        },
+      })))
+      const serialized = JSON.stringify(info.mock.calls)
+      expect(serialized).not.toContain('PRIVATE NOTE CONTENT')
+      expect(serialized).not.toContain(root)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -127,9 +127,11 @@ Vault 的 `id` 和 `agentId` 必须唯一；Vault 路径不能相同、嵌套或
 
 日报采用稳定的 YAML frontmatter（`date`、`timezone`、`source_count`、`generated_by`），随后是“今日概览”和“变更文件”章节。文件条目只使用 vault-relative 路径；无变更和预算截断都必须明确说明。
 
-宿主提供 logger 时，runner 会发出 `kb-daily.started`、`kb-daily.skipped`、`kb-daily.created`、`kb-daily.failed`、`kb-daily.approval-required`、`kb-daily.approval-rejected` 和 `kb-daily.approval-timeout` 事件。事件只包含运行元数据；通知是可选的，仅在宿主提供 `notification.send` 适配器时发送。
+宿主提供 logger 时，runner 会发出 `kb-daily.started`、`kb-daily.skipped`、`kb-daily.created`、`kb-daily.failed`、`kb-daily.approval-required`、`kb-daily.approval-rejected` 和 `kb-daily.approval-timeout` 事件。生命周期事件包含 `durationMs`、`filesRead`、`truncationCount` 和按工具统计的 `{ count, failures }` 摘要；失败事件还包含已脱敏的 `failureReason`。工具摘要只包含名称和计数，不包含参数、文件内容或日报正文。通知是可选的，仅在宿主提供 `notification.send` 适配器时发送。
 
 宿主可以通过 `kbDailyRunner` 服务（`ctx.get('kbDailyRunner')`）取得单 Vault 的 `RunnerControl`，调用 `status()` 查看状态、`runNow()` 手动触发，或调用 `retry(date)` 显式重试。多 Vault 模式下，控制服务按 Vault 隔离为 `kbDailyRunner:<id>`，例如 `ctx.get('kbDailyRunner:work')`；插件卸载时这些服务会一并移除。
+
+`RunnerStatus.diagnostics` 会暴露最近一次运行的同一组安全计数：耗时、成功读取的文件数、截断次数，以及工具调用次数/失败次数。
 
 当 `ask` 写入等待宿主处理时，`status().state` 为 `awaiting-approval`；明确拒绝会变为 `rejected`，被取消或过期的审批会变为 `timed-out`。审批通道不可用时仍为 `failed`，并保留原始原因。运行期间重复调用 `runNow()` 会复用同一个在途任务，不会重复创建 Agent 任务。
 

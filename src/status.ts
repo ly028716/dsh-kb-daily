@@ -10,12 +10,25 @@ export function runnerServiceName(id?: string): string {
 
 export type RunnerState = 'idle' | 'running' | 'awaiting-approval' | 'succeeded' | 'already-done' | 'rejected' | 'timed-out' | 'failed' | 'stopped'
 
+export interface ToolCallSummary {
+  count: number
+  failures: number
+}
+
+export interface RunDiagnostics {
+  durationMs: number
+  filesRead: number
+  truncationCount: number
+  toolCalls: Record<string, ToolCallSummary>
+}
+
 export interface RunnerStatus {
   date: string
   state: RunnerState
   lastAttemptAt?: string
   lastError?: string
   reportPath?: string
+  diagnostics?: RunDiagnostics
 }
 
 export interface RunnerControl {
