@@ -26,10 +26,8 @@ jobs:
       - run: pnpm run verify:core
 
   smoke:
-    if: github.event_name == 'workflow_dispatch'
     needs: verify-core
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 5
     env:
       DSH_TELEMETRY_DISABLED: '1'
