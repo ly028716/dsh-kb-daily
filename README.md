@@ -113,7 +113,7 @@ Vault ids and agent ids must be unique. Vault paths cannot be identical, nested,
 
 ## Runtime behavior
 
-On load and on each interval, the plugin checks whether today's report already exists. If it does, no agent work is scheduled. Otherwise it resumes `agentId` when possible, falls back to `agents.create()` when persistence is unavailable, and queues one task turn. An in-flight and once-per-local-day guard prevents duplicate work. Runner failures are contained so the host timer remains usable; a failed same-day attempt is not retried until restart or the next local day.
+On load and on each interval, the plugin checks whether today's report already exists. If it does, no agent work is scheduled. Otherwise it resumes `agentId` when possible, falls back to `agents.create()` when persistence is unavailable, and queues one task turn. Repeated `runNow()` calls for the same local date share one Promise; a date rollover is queued behind the current run so one Agent is never driven concurrently. On unload, the Agent running the plugin's task is cancelled before the runner waits for queued work, then plugin-owned handles are disposed. Runner failures are contained so the host timer remains usable; a failed same-day attempt is not retried until restart or the next local day. Without `sessionPersistence`, the fallback session is safe to run and clean up but cannot carry conversation history across a process restart.
 
 The plugin registers four model tools in legacy single-vault mode:
 

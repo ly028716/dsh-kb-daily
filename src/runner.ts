@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import '@deepseek-ai/cordis-plugin-timer'
-import type { AgentHandle } from '@deepseek-ai/dsh-agent'
+import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { dateKey, reportFileName } from './date.ts'
@@ -16,6 +16,8 @@ export interface RunnerConfig {
   provider?: string
   model?: string
   checkIntervalMs: number
+  /** Injectable clock for deterministic lifecycle/date tests. */
+  now?: () => Date
   toolNames?: readonly string[]
   readToolName?: string
 }
@@ -24,6 +26,8 @@ export interface RunOptions {
   now?: Date
   date?: string
   trackHandle?: (handle: AgentHandle) => void
+  trackAgent?: (agent: Agent, owned: boolean) => void
+  assertActive?: () => void
 }
 
 export type CheckOutcome = 'ran' | 'already-done'
@@ -117,8 +121,12 @@ export async function runDailyCheck(ctx: Context, config: RunnerConfig, taskText
       handle = await ctx.agents.create({ sessionId: id, agentOptions })
     }
     options.trackHandle?.(handle)
+    options.trackAgent?.(handle.agent, true)
     agent = handle.agent
+  } else {
+    options.trackAgent?.(agent, false)
   }
+  options.assertActive?.()
   agent.followup(createUserMessage({
     content: [{ type: 'text', text: taskText(date) }],
     source: { kind: 'plugin', plugin: 'kb-daily' },
@@ -164,7 +172,10 @@ export function createGuard(deps: GuardDeps): () => Promise<void> {
 export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date: string) => string): { control: RunnerControl; updateApprovalStatus: (update: ApprovalStatusUpdate) => void; stop: () => Promise<void> } {
   const handles = new Set<AgentHandle>()
   const activeRuns = new Set<Promise<void>>()
-  let inFlight: Promise<CheckOutcome> | undefined
+  const queuedRuns = new Map<string, Promise<CheckOutcome>>()
+  let queueTail: Promise<void> = Promise.resolve()
+  let activeRun: { date: string } | undefined
+  let activeAgent: { agent: Agent; owned: boolean } | undefined
   let attemptedDay: string | undefined
   let stopped = false
   let approvalUnavailable = false
@@ -172,7 +183,7 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
   let diagnostics = createDiagnostics()
   const diagnosticToolNames = new Set(config.toolNames ?? [])
   const observeToolResult = (exec: { name: string }, result: { isError: boolean; value?: unknown }): void => {
-    if (stopped || inFlight === undefined || !diagnosticToolNames.has(exec.name)) return
+    if (stopped || activeRun === undefined || !diagnosticToolNames.has(exec.name)) return
     const value = result.value
     const valueRecord = typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined
     const toolFailed = result.isError || typeof valueRecord?.code === 'string' && valueRecord.code !== 'report_exists'
@@ -205,12 +216,12 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
     }
   }
   let currentStatus: RunnerStatus = {
-    date: dateKey(new Date(), config.timeZone),
+    date: dateKey((config.now ?? (() => new Date()))(), config.timeZone),
     state: 'idle',
   }
 
   const updateApprovalStatus = (update: ApprovalStatusUpdate): void => {
-    if (stopped || inFlight === undefined) return
+    if (stopped || activeRun === undefined) return
     if (update.state === 'awaiting-approval') {
       currentStatus = { ...currentStatus, state: 'awaiting-approval' }
       return
@@ -248,9 +259,8 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
     }, 'warn')
   }
 
-  const run = async (targetDate: string, force: boolean): Promise<CheckOutcome> => {
+  const execute = async (targetDate: string, force: boolean): Promise<CheckOutcome> => {
     if (stopped) throw new Error('kb-daily runner is stopped')
-    if (inFlight !== undefined) return inFlight
     runStartedAt = Date.now()
     diagnostics = createDiagnostics()
     approvalUnavailable = false
@@ -260,7 +270,7 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
     currentStatus = startingStatus
     const startedAt = runStartedAt
     logRunnerEvent(ctx, 'kb-daily.started', { date: targetDate, fileCount: null, status: 'running', ...diagnosticFields(0) })
-    inFlight = (async () => {
+    return (async () => {
       const destination = resolveReportPath(config.vaultPath, config.reportDir, reportFileName(targetDate))
       if (!force && attemptedDay === targetDate) {
         const durationMs = Date.now() - startedAt
@@ -279,6 +289,15 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
       const outcome = await runDailyCheck(ctx, config, taskText, {
         date: targetDate,
         trackHandle: handle => handles.add(handle),
+        trackAgent: (agent, owned) => {
+          activeAgent = { agent, owned }
+          if (stopped && owned) {
+            try { agent.cancel({ kind: 'disposed' }) } catch { /* cancellation is best effort during teardown */ }
+          }
+        },
+        assertActive: () => {
+          if (stopped) throw new Error('kb-daily runner is stopped')
+        },
       })
       const durationMs = Date.now() - startedAt
       currentStatus = { ...currentStatus, state: 'succeeded', reportPath: destination, diagnostics: snapshotDiagnostics(diagnostics, durationMs) }
@@ -286,6 +305,7 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
       notifyHost(ctx, 'kb-daily.created', { date: targetDate, status: outcome, ...diagnosticFields(durationMs) })
       return outcome
     })().catch(error => {
+      if (stopped) throw error
       const approvalTerminal = currentStatus.state === 'rejected' || currentStatus.state === 'timed-out'
       if (approvalTerminal) throw error
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -303,25 +323,42 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
       logRunnerEvent(ctx, 'kb-daily.failed', fields, 'error')
       notifyHost(ctx, 'kb-daily.failed', fields)
       throw error
-    }).finally(() => { inFlight = undefined })
-    return inFlight
+    })
+  }
+
+  const schedule = (targetDate: string, force: boolean): Promise<CheckOutcome> => {
+    if (stopped) return Promise.reject(new Error('kb-daily runner is stopped'))
+    const existing = queuedRuns.get(targetDate)
+    if (existing !== undefined) return existing
+
+    const promise = queueTail.then(async () => {
+      activeRun = { date: targetDate }
+      try {
+        return await execute(targetDate, force)
+      } finally {
+        activeAgent = undefined
+        activeRun = undefined
+      }
+    })
+    queueTail = promise.then(() => undefined, () => undefined)
+    queuedRuns.set(targetDate, promise)
+    void promise.then(
+      () => { if (queuedRuns.get(targetDate) === promise) queuedRuns.delete(targetDate) },
+      () => { if (queuedRuns.get(targetDate) === promise) queuedRuns.delete(targetDate) },
+    )
+    const tracked = promise.then(() => undefined, () => undefined)
+    activeRuns.add(tracked)
+    void tracked.then(() => activeRuns.delete(tracked))
+    return promise
   }
 
   const runNow = (): Promise<CheckOutcome> => {
-    const targetDate = dateKey(new Date(), config.timeZone)
-    const promise = run(targetDate, false)
-    const tracked = promise.then(() => undefined, () => undefined)
-    activeRuns.add(tracked)
-    void tracked.then(() => activeRuns.delete(tracked))
-    return promise
+    const targetDate = dateKey((config.now ?? (() => new Date()))(), config.timeZone)
+    return schedule(targetDate, false)
   }
   const retry = (date?: string): Promise<CheckOutcome> => {
-    const targetDate = date ?? dateKey(new Date(), config.timeZone)
-    const promise = run(targetDate, true)
-    const tracked = promise.then(() => undefined, () => undefined)
-    activeRuns.add(tracked)
-    void tracked.then(() => activeRuns.delete(tracked))
-    return promise
+    const targetDate = date ?? dateKey((config.now ?? (() => new Date()))(), config.timeZone)
+    return schedule(targetDate, true)
   }
   const control: RunnerControl = {
     runNow,
@@ -331,14 +368,22 @@ export function createRunner(ctx: Context, config: RunnerConfig, taskText: (date
   const invoke = () => { void runNow().catch(() => undefined) }
   invoke()
   const stopTimer = ctx.interval(invoke, config.checkIntervalMs)
-  const stop = async () => {
-    if (stopped) return
-    stopped = true
-    stopTimer()
-    disposeToolObserver()
-    await Promise.allSettled([...activeRuns])
-    await Promise.allSettled([...handles].map(handle => handle.dispose()))
-    currentStatus = { ...currentStatus, state: 'stopped' }
+  let stopPromise: Promise<void> | undefined
+  const stop = (): Promise<void> => {
+    if (stopPromise !== undefined) return stopPromise
+    stopPromise = (async () => {
+      stopped = true
+      stopTimer()
+      disposeToolObserver()
+      const agent = activeAgent
+      if (agent !== undefined) {
+        try { agent.agent.cancel({ kind: 'disposed' }) } catch { /* cancellation is best effort during teardown */ }
+      }
+      await Promise.allSettled([...activeRuns])
+      await Promise.allSettled([...handles].map(handle => handle.dispose()))
+      currentStatus = { ...currentStatus, state: 'stopped' }
+    })()
+    return stopPromise
   }
   return { control, updateApprovalStatus, stop }
 }

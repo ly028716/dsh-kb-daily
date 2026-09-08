@@ -375,4 +375,93 @@ describe('kb-daily runner', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  it('deduplicates runNow calls and queues a date change', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-date-queue-'))
+    try {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-08-24T10:00:00Z'))
+      let releaseFirst!: () => void
+      let releaseSecond!: () => void
+      const idlePromises = [
+        new Promise<void>(resolve => { releaseFirst = resolve }),
+        new Promise<void>(resolve => { releaseSecond = resolve }),
+      ]
+      const followup = vi.fn(() => {
+        const date = followup.mock.calls.length === 1 ? '2026-08-24' : '2026-08-25'
+        mkdirSync(join(root, 'Daily'), { recursive: true })
+        writeFileSync(join(root, 'Daily', `${date}.md`), '# report')
+      })
+      const handle = {
+        agent: {
+          followup,
+          whenIdle: vi.fn(() => idlePromises.shift()!),
+          cancel: vi.fn(),
+        },
+        dispose: vi.fn(async () => undefined),
+      }
+      let liveAgent: typeof handle.agent | undefined
+      const agents = {
+        get: vi.fn(() => liveAgent),
+        resume: vi.fn(async () => { throw new Error('no persistence') }),
+        create: vi.fn(async () => { liveAgent = handle.agent; return handle }),
+      }
+      const ctx = { agents, interval: vi.fn(() => vi.fn()) } as never
+      const runner = createRunner(ctx, {
+        vaultPath: root, reportDir: 'Daily', timeZone: 'UTC', agentId: 'kb-daily', checkIntervalMs: 1000,
+      }, date => `run ${date}`)
+
+      await vi.waitFor(() => expect(followup).toHaveBeenCalledOnce())
+      const sameDayFirst = runner.control.runNow()
+      const sameDaySecond = runner.control.runNow()
+      expect(sameDayFirst).toBe(sameDaySecond)
+
+      vi.setSystemTime(new Date('2026-08-25T10:00:00Z'))
+      const nextDay = runner.control.runNow()
+      expect(nextDay).not.toBe(sameDayFirst)
+      expect(followup).toHaveBeenCalledOnce()
+
+      releaseFirst()
+      await vi.waitFor(() => expect(followup).toHaveBeenCalledTimes(2))
+      releaseSecond()
+      await expect(Promise.all([sameDayFirst, sameDaySecond, nextDay])).resolves.toEqual(['ran', 'ran', 'ran'])
+      await runner.stop()
+    } finally {
+      vi.useRealTimers()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('cancels an active agent before waiting during stop', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-runner-stop-'))
+    try {
+      let releaseIdle!: () => void
+      const idle = new Promise<void>(resolve => { releaseIdle = resolve })
+      const cancel = vi.fn(() => releaseIdle())
+      const handle = {
+        agent: { followup: vi.fn(), whenIdle: vi.fn(() => idle), cancel },
+        dispose: vi.fn(async () => undefined),
+      }
+      const agents = {
+        get: vi.fn(() => undefined),
+        resume: vi.fn(async () => { throw new Error('no persistence') }),
+        create: vi.fn(async () => handle),
+      }
+      const error = vi.fn()
+      const ctx = { agents, logger: { error }, interval: vi.fn(() => vi.fn()) } as never
+      const runner = createRunner(ctx, {
+        vaultPath: root, reportDir: 'Daily', timeZone: 'UTC', agentId: 'kb-daily', checkIntervalMs: 1000,
+      }, () => 'run')
+      await vi.waitFor(() => expect(handle.agent.followup).toHaveBeenCalledOnce())
+
+      const stopping = runner.stop()
+      await Promise.resolve()
+      expect(cancel).toHaveBeenCalledWith({ kind: 'disposed' })
+      await stopping
+      expect(runner.control.status().state).toBe('stopped')
+      expect(error).not.toHaveBeenCalledWith('kb-daily.failed', expect.anything())
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
