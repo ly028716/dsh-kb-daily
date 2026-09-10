@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { assertContained, assertNoSymlinkSegments, resolveReportPath } from '../src/paths.ts'
 
@@ -66,6 +66,24 @@ describe('kb-daily path containment', () => {
     try {
       await symlink(outside, join(root, 'Daily'), 'junction')
       await expect(assertNoSymlinkSegments(root, join(root, 'Daily', '2026-08-17.md'))).rejects.toThrow(/symbolic link/i)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+  it.each([
+    ['relative', (root: string, outside: string) => relative(dirname(join(root, 'linked.md')), join(outside, 'escape.md'))],
+    ['absolute', (_root: string, outside: string) => join(outside, 'escape.md')],
+  ])('rejects %s file symlink segments', async (_kind, target) => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    try {
+      await mkdir(outside, { recursive: true })
+      await symlink(target(root, outside), join(root, 'linked.md'), 'file')
+      await expect(assertNoSymlinkSegments(root, join(root, 'linked.md'))).rejects.toThrow(/symbolic link/i)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return
+      throw error
     } finally {
       await rm(root, { recursive: true, force: true })
       await rm(outside, { recursive: true, force: true })

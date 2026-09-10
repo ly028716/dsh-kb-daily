@@ -154,4 +154,13 @@ pnpm run verify
 
 Pull requests use `verify:core` as the blocking CI gate. Release tags matching `v*` run the full `verify` gate, including the real DSH profile smoke test, before GitHub Release creation. Maintainers can follow the [release runbook](docs/releasing.md) to prepare a GitHub Release; npm publication requires separate, explicit authorization and is not assumed to be available.
 
+## Maintainer documentation
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Architecture](docs/architecture.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Migration: `0.1.0-rc.8` → `0.2.0`](docs/migration-0.1.0-rc.8-to-0.2.0.md)
+- [Release runbook](docs/releasing.md)
+
 The package uses published DeepSeek Harness and Cordis APIs only. Its peer dependencies are mirrored as development dependencies for local typechecking and tests; no `workspace:` dependency is required.

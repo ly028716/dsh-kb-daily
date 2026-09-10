@@ -1,6 +1,7 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { mkdir, open, readdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { assertContained, assertNoSymlinkSegments, isMarkdownPath } from './paths.ts'
+import { assertContained, assertNoSymlinkSegments, assertPhysicallyContained, isMarkdownPath } from './paths.ts'
 
 /** One .md file found by a vault scan. */
 export interface ModifiedFile {
@@ -153,10 +154,24 @@ export async function readVaultFile(
     throw new Error(`only Markdown files are supported: ${relPath}`)
   }
   await assertNoSymlinkSegments(vaultPath, abs)
-  const buffer = await readFile(abs)
-  const slice = buffer.subarray(0, maxBytes)
-  const truncated = buffer.byteLength > maxBytes
-  return { content: trimToCharBoundary(slice).toString('utf8'), truncated }
+  const readFlags = process.platform === 'win32'
+    ? 'r'
+    : constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+  const handle = await open(abs, readFlags)
+  try {
+    // Validate again after opening. The handle is then used for the actual
+    // read, so a later path replacement cannot redirect the file contents.
+    await assertNoSymlinkSegments(vaultPath, abs)
+    const physicalRoot = await realpath(resolve(vaultPath))
+    const physicalFile = await realpath(abs)
+    assertPhysicallyContained(physicalRoot, physicalFile)
+    const buffer = await handle.readFile()
+    const slice = buffer.subarray(0, maxBytes)
+    const truncated = buffer.byteLength > maxBytes
+    return { content: trimToCharBoundary(slice).toString('utf8'), truncated }
+  } finally {
+    await handle.close()
+  }
 }
 
 /**

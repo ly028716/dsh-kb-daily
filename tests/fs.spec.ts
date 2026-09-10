@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, sep } from 'node:path'
+import { dirname, join, relative, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { boundModifiedFiles, listModifiedFiles, MAX_REPORT_BYTES, readVaultFile, reportExists, writeReport } from '../src/fs.ts'
 
@@ -71,6 +71,43 @@ describe('kb-daily fs operations', () => {
       await writeFile(join(outside, 'escape.md'), '# escape')
       await symlink(outside, join(root, 'notes'), 'dir')
       await expect(readVaultFile(root, 'notes/escape.md')).rejects.toThrow(/symbolic link/i)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return
+      throw error
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+  it('rejects Windows junctions across read, write, and existence operations', async () => {
+    if (process.platform !== 'win32') return
+
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    try {
+      await writeFile(join(outside, 'escape.md'), '# escape')
+      await symlink(outside, join(root, 'Notes'), 'junction')
+      await expect(readVaultFile(root, 'Notes/escape.md')).rejects.toThrow(/symbolic link/i)
+
+      await symlink(outside, join(root, 'Daily'), 'junction')
+      await expect(reportExists(root, 'Daily', '2026-08-17.md')).rejects.toThrow(/symbolic link/i)
+      await expect(writeReport(root, 'Daily', '2026-08-17.md', '# report')).rejects.toThrow(/symbolic link/i)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+  it.each([
+    ['relative', (root: string, outsideFile: string) => relative(dirname(join(root, 'linked.md')), outsideFile)],
+    ['absolute', (_root: string, outsideFile: string) => outsideFile],
+  ])('rejects %s file symlinks before opening the file', async (_kind, target) => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    try {
+      const outsideFile = join(outside, 'escape.md')
+      await writeFile(outsideFile, '# escape')
+      await symlink(target(root, outsideFile), join(root, 'linked.md'), 'file')
+      await expect(readVaultFile(root, 'linked.md')).rejects.toThrow(/symbolic link/i)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EPERM') return
       throw error
@@ -193,6 +230,16 @@ describe('kb-daily fs operations', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+  it('does not create an oversized report when the content is one byte over the cap', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    try {
+      const tooLarge = 'x'.repeat(MAX_REPORT_BYTES + 1)
+      await expect(writeReport(root, 'Daily', '2026-08-20.md', tooLarge)).rejects.toThrow(/maximum size/i)
+      await expect(readFile(join(root, 'Daily', '2026-08-20.md'))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
   it('rejects report writes through symlinked or junction report directories', async () => {
     const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
     const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
@@ -200,6 +247,21 @@ describe('kb-daily fs operations', () => {
       const linkType = process.platform === 'win32' ? 'junction' : 'dir'
       await symlink(outside, join(root, 'Daily'), linkType)
       await expect(writeReport(root, 'Daily', '2026-08-17.md', '# report')).rejects.toThrow(/symbolic link/i)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+  it('rejects relative report-directory symlinks before creating or checking a report', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'kb-daily-vault-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kb-daily-outside-'))
+    try {
+      await symlink(relative(root, outside), join(root, 'Daily'), 'dir')
+      await expect(writeReport(root, 'Daily', '2026-08-21.md', '# report')).rejects.toThrow(/symbolic link/i)
+      await expect(reportExists(root, 'Daily', '2026-08-21.md')).rejects.toThrow(/symbolic link/i)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return
+      throw error
     } finally {
       await rm(root, { recursive: true, force: true })
       await rm(outside, { recursive: true, force: true })
@@ -236,6 +298,10 @@ describe('kb-daily fs operations', () => {
       const junk = await readVaultFile(root, 'junk.md')
       expect(junk.truncated).toBe(false)
       expect(junk.content).toBe('\uFFFD\uFFFD')
+      await writeFile(join(root, 'invalid.md'), Buffer.from([0xf0, 0x28, 0x8c, 0xbc, 0xe2, 0x82]))
+      const invalid = await readVaultFile(root, 'invalid.md', 6)
+      expect(invalid.truncated).toBe(false)
+      expect(invalid.content).toContain('\uFFFD')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

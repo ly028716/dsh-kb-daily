@@ -37,6 +37,20 @@ export function assertContained(vaultPath: string, relPath: string): string {
 }
 
 /**
+ * Reject an already-resolved physical path that falls outside the vault.
+ * Unlike assertContained(), equality with the vault root is allowed because
+ * realpath() may be used to validate the root itself.
+ */
+export function assertPhysicallyContained(vaultPath: string, absolutePath: string): void {
+  const root = resolve(vaultPath)
+  const candidate = resolve(absolutePath)
+  const rel = relative(root, candidate)
+  if (rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) {
+    throw new Error(`path escapes the vault: ${absolutePath}`)
+  }
+}
+
+/**
  * Reject physical paths that pass through a symbolic-link or junction segment.
  * Missing tail segments are allowed so callers can validate a future path before
  * creating it.
